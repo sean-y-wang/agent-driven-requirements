@@ -25,7 +25,7 @@ def font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
 def write_architecture_svg() -> Path:
     w, h = 960, 620
     svg = f'''<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" role="img" aria-label="feishu-bitable-bot architecture">
+<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" role="img" aria-label="Agent-Driven Requirements architecture">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#0f172a"/>

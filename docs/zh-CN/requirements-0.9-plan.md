@@ -1,6 +1,6 @@
-# 需求收集与进展同步 · 0.9 演进规划（基于 feishu-bitable-bot 0.8 能力面）
+# 需求收集与进展同步 · 0.9 演进规划（基于 Agent-Driven Requirements（原 feishu-bitable-bot）0.8 能力面）
 
-> 仓库：`sean-y-wang/feishu-bitable-bot`（当前 pyproject 仍标 0.1.0；产品能力面称 0.8→0.9）
+> 仓库：`sean-y-wang/agent-driven-requirements`（历史名 feishu-bitable-bot；当时 pyproject 仍标 0.1.0；产品能力面称 0.8→0.9）
 > 分支：`feat/requirements-progress-0.9`
 > 执行：Codex gpt-6-astra high（Orca worktree）；Master 写规划、验收与跟进
 
@@ -83,4 +83,4 @@
 
 ## 5. 给 Codex 的一句话任务
 
-在 `feishu-bitable-bot` 上从 main 拉 `feat/requirements-progress-0.9`，按本 PLAN 实现 0.9：多表配置写入、需求小助手分诊/群进展、本机 progress-sync skill、日报周报确认骨架与文档；单测全绿；版本 0.9.0。
+在 `agent-driven-requirements` 上从 main 拉 `feat/requirements-progress-0.9`，按本 PLAN 实现 0.9：多表配置写入、需求小助手分诊/群进展、本机 progress-sync skill、日报周报确认骨架与文档；单测全绿；版本 0.9.0。

@@ -35,6 +35,6 @@ fixture 示例：`[{"record_id":"recTASK","fields":{"任务标题":"联调","所
 
 接入会话结束触发器时读取 [adapters.md](references/adapters.md)。本 skill 不负责日报/周报确认，不在研发中插入周报或群进展确认；提需摘要及日报是允许的中插类型。
 
-1.0 的 Personal Agent 主动填报沿用同一同步键：本人 + 日期 + 任务记录 ID + 来源智能体。转交同一条 Codex/CC/Orca 进展时必须保留原 `source`，不要改成「其他」；不同来源会保留不同进展行。PA 和 skill 共用 `PROGRESS_LOCK_DIR`（默认 `~/.cache/progress-sync/locks`），同机并发不会双写。多机使用同一远端 client token 兜底，但不提供跨主机更新排序。
+1.0 的组织侧主动填报沿用同一同步键：本人 + 日期 + 任务记录 ID + 来源智能体。转交同一条 Codex/CC/Orca 进展时必须保留原 `source`，不要改成「其他」；不同来源会保留不同进展行。确认 CLI 与 skill 共用 `PROGRESS_LOCK_DIR`（默认 `~/.cache/progress-sync/locks`），同机并发不会双写。多机使用同一远端 client token 兜底，但不提供跨主机更新排序。
 
-日报/周报由 PA 在工作日 09:00 / 周五 18:00 汇总本人进展后确认，群进展不进入此流程。需要手动补进展时可调用 `personal-agent progress.submit --config /absolute/roles.yaml --json '{"task":"recTASK","source":"Codex","summary":"完成接口联调"}'`；缺任务时先列「我的任务」，无映射则保留本地提示并跳过本次同步，不自动创建需求。
+日报/周报由组织侧确认会话在工作日 09:00 / 周五 18:00 汇总本人进展后确认，群进展不进入此流程。需要手动补进展时可调用 `personal-agent progress.submit --config /absolute/roles.yaml --json '{"task":"recTASK","source":"Codex","summary":"完成接口联调"}'`（`personal-agent` 为历史命令名）；缺任务时先列「我的任务」，无映射则保留本地提示并跳过本次同步，不自动创建需求。

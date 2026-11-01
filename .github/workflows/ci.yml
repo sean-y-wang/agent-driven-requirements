@@ -17,4 +17,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t feishu-bitable-bot:ci .
+      - run: docker build -t agent-driven-requirements:ci .

@@ -1,4 +1,4 @@
-"""Personal Agent tool API. Identity always comes from the authenticated backend."""
+"""Personal confirmation tool API. Identity always comes from the authenticated backend."""
 
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ class PersonalAgent:
 
     def __init__(self, cfg, api, reports: ReportStore, *, clock=None, actor="worker"):
         if not cfg.tables:
-            raise ValueError("Personal Agent 需要四表配置")
+            raise ValueError("个人确认入口需要四表配置")
         self.cfg, self.api, self.reports = cfg, api, reports
         self.clock = clock or (lambda: datetime.now(ZoneInfo(cfg.timezone)))
         self.actor = actor
@@ -197,7 +197,7 @@ class PersonalAgent:
 
     def call(self, method: str, payload: dict | None = None, *, dry_run=False):
         if self.actor.lower() == "master":
-            raise ValueError("Master 不写表，也不代本人确认；请由本人 Personal Agent 操作")
+            raise ValueError("Master 不写表，也不代本人确认；请由本人确认入口操作")
         if not isinstance(payload, (dict, type(None))):
             raise ValueError("请求必须为 JSON object")
         payload = payload or {}

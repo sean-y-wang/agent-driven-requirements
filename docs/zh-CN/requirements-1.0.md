@@ -1,4 +1,4 @@
-# 需求进展 1.0.0：Personal Agent 与主动填报
+# Agent-Driven Requirements 1.0.0：组织侧确认与主动填报
 
 基于 `origin/feat/requirements-progress-0.9`。对应 [原始 PLAN](requirements-1.0-plan.md)、[0.9 四表配置与入池规则](requirements-0.9.md)、[English guide](../en/requirements-1.0.md)。保留需求小助手入池、三种本机 skill 静默进展和 Master 不写表；无需新增飞书表或列。
 
@@ -15,11 +15,11 @@ export PROGRESS_LOCK_DIR="$PWD/data/progress-locks"
 
 把配置中的四表 ID 换成现有租户的真实 ID；默认值仅供 fixture。`FEISHU_USER_ACCESS_TOKEN` 从本人 OAuth 登录获取，通过环境注入，勿放进 JSON、Git 或日志。身份由飞书 `user_info` 解析；不能用请求中的 `owner/open_id` 冒充他人，也不回退到机器人 tenant token。国际版设置 `FEISHU_DOMAIN=lark`。调用者须有相关表读取/写入权限。
 
-机器人、调度器和 PA 必须使用同一个 `REPORT_DB_PATH`。启动时对 0.9 SQLite 做增量迁移，保留已有稿件。确认状态写入本地 **`report_drafts` 表**：`pending` 待确认、`confirmed` 已确认、`void` 已作废、`superseded` 已重拟。飞书进展表仍是事实日志，`复核标记=false` 不能替代本人确认；管理者只消费确认库中的正文快照。这延续 0.9「确认草稿不另建飞书表」的设计。
+机器人、调度器和个人确认 CLI 必须使用同一个 `REPORT_DB_PATH`。启动时对 0.9 SQLite 做增量迁移，保留已有稿件。确认状态写入本地 **`report_drafts` 表**：`pending` 待确认、`confirmed` 已确认、`void` 已作废、`superseded` 已重拟。飞书进展表仍是事实日志，`复核标记=false` 不能替代本人确认；管理者只消费确认库中的正文快照。这延续 0.9「确认草稿不另建飞书表」的设计。
 
-## 挂到 Personal Agent
+## 组织侧个人确认与主动填报
 
-提供安装命令 `personal-agent` 和可测试的 Python API `PersonalAgent.call(method, payload, dry_run=False)`，本版本无需额外 HTTP 服务。PA/任意客户端可以把下面的 CLI 注册成工具，JSON 从文件或 stdin 输入，stdout 是结果、stderr 是错误，失败退出码为 2。宿主负责工具选择、本人 OAuth 登录与会话展示；不会自动注册其他 Agent 的全局钩子。
+提供安装命令 `personal-agent`（历史命令名）和可测试的 Python API `PersonalAgent.call(method, payload, dry_run=False)`，本版本无需额外 HTTP 服务。这是**组织侧需求小助手同一产品内的个人确认/主动填报能力**，不是独立 Personal Agent 产品。飞书私聊确认卡片、或任意客户端把下面的 CLI 注册成工具均可；JSON 从文件或 stdin 输入，stdout 是结果、stderr 是错误，失败退出码为 2。宿主负责工具选择、本人 OAuth 登录与会话展示；不会自动注册其他 Agent 的全局钩子。
 
 ```sh
 personal-agent tasks.list
@@ -77,7 +77,7 @@ personal-agent report.action --json '{"report_id":"返回的id","revision":"返�
 personal-agent daily.confirm --json '{"report_id":"返回的id","revision":"修改后revision"}'
 # 用户明确要求提交并确认时，可以直接提供正文
 personal-agent daily.confirm --json '{"body":"补日报：11月4日无编码，完成客户访谈。"}'
-personal-agent weekly.confirm --json '{"body":"本周完成 PA 接入与回归；风险：无。"}'
+personal-agent weekly.confirm --json '{"body":"本周完成确认入口接入与回归；风险：无。"}'
 ```
 
 ## 场景与状态边界
@@ -86,23 +86,23 @@ personal-agent weekly.confirm --json '{"body":"本周完成 PA 接入与回归�
 
 工作日 09:00 起 `inbox` 提供上一工作日至昨日的日报，周一覆盖周五至周日；周五 18:00 起提供本周周报。每份卡片只处理一份汇报，有整单确认、改摘要、作废三个动作。卡片「改摘要」打开输入表单，保存后生成新卡片，再次确认。逐条修改用 `items` + `report.action edits`。空进展显示「无编码/请手填」，允许主动记非编码工作，或确认本期无进展。
 
-状态持久化，不依赖 PA 进程存活。确认必须匹配本人、id、revision；任何修改都会更换 revision（即使文本改回原文，旧卡片也不会复活）。日报仅提交当天能确认，周报到本周日有效；未确认日报次日失效，下一个工作日重新拟定，旧稿标记 superseded。用户编辑过的草稿不会被下一次调度覆盖。已确认/作废为终态，重复点击返回已处理。
+状态持久化，不依赖确认 CLI/会话进程存活。确认必须匹配本人、id、revision；任何修改都会更换 revision（即使文本改回原文，旧卡片也不会复活）。日报仅提交当天能确认，周报到本周日有效；未确认日报次日失效，下一个工作日重新拟定，旧稿标记 superseded。用户编辑过的草稿不会被下一次调度覆盖。已确认/作废为终态，重复点击返回已处理。
 
 ### S2：编码结束静默同步
 
-继续使用 [progress-sync skill](../../skills/progress-sync/SKILL.md)。PA 和 skill 共用 0.9 同步键的原始算法：`SHA256(JSON([本人, 日期, task_id, source]))`。PA 转交已有编码进展时保留原 source；同日同任务同来源更新同一行，不同来源保留不同事实。
+继续使用 [progress-sync skill](../../skills/progress-sync/SKILL.md)。确认入口和 skill 共用 0.9 同步键的原始算法：`SHA256(JSON([本人, 日期, task_id, source]))`。主动填报转交已有编码进展时保留原 source；同日同任务同来源更新同一行，不同来源保留不同事实。
 
-两入口共用 `PROGRESS_LOCK_DIR` 下按目标表/同步键区分的进程锁，并按远端同步键查询。换 mapping 路径、重启、删除本地索引均不会生成第二行；远端重复键会报错要求处理。不同机器的创建使用相同飞书 client token，但不提供跨机器的更新顺序保证；多主机并发部署应由 PA 宿主串行调度同一用户的同步。
+确认入口与 skill 两入口共用 `PROGRESS_LOCK_DIR` 下按目标表/同步键区分的进程锁，并按远端同步键查询。换 mapping 路径、重启、删除本地索引均不会生成第二行；远端重复键会报错要求处理。不同机器的创建使用相同飞书 client token，但不提供跨机器的更新顺序保证；多主机并发部署应由部署宿主串行调度同一用户的同步。
 
 未映射模块在读写飞书前跳过并打印本地提示；多任务不猜测，无权限不写，Master 被拒绝。成功不发聊天消息，研发过程中不插入确认。
 
-### S3：用户主动找 PA
+### S3：用户主动确认 / 补进展
 
-「帮我记一条进展：完成联调」→ `intent.route` 给出 `progress.submit` 建议。缺任务时返回本人任务列表；没有合适任务只返回未持久化的候选，不自动入需求池。「补日报」「交周报」→ `report.prepare` 建议，展示给本人后再调用 confirm。没有内容时返回 `needs_content`，不会编造摘要。复杂自然语言由宿主 PA 解析成同一个结构化工具契约。
+「帮我记一条进展：完成联调」→ `intent.route` 给出 `progress.submit` 建议。缺任务时返回本人任务列表；没有合适任务只返回未持久化的候选，不自动入需求池。「补日报」「交周报」→ `report.prepare` 建议，展示给本人后再调用 confirm。没有内容时返回 `needs_content`，不会编造摘要。复杂自然语言由宿主会话解析成同一个结构化工具契约。
 
-### S4：群提需与 PA 并行
+### S4：群提需与个人确认并行
 
-群提需继续走 0.9 小助手确认/入池；群进展静默记录且待复核。PA 任务档案可只读展示上下文，但来源为「群」或复核标记为真的记录永不进入个人确认稿。关联需求仅通过本人参与任务的 `requirement` 记录 ID 读取；不会把全租户同模块需求暴露为「与我相关」。
+群提需继续走 0.9 小助手确认/入池；群进展静默记录且待复核。个人确认侧任务档案可只读展示上下文，但来源为「群」或复核标记为真的记录永不进入个人确认稿。关联需求仅通过本人参与任务的 `requirement` 记录 ID 读取；不会把全租户同模块需求暴露为「与我相关」。
 
 ### S5：管理者周一
 
@@ -112,7 +112,7 @@ personal-agent weekly.confirm --json '{"body":"本周完成 PA 接入与回归�
 requirements-reports --config "$BOT_CONFIG" --members /private/members.json --db "$REPORT_DB_PATH"
 ```
 
-调度器输出 outbox，不自动发消息。宿主 PA 可以在打开时调用 `inbox`，或部署端按每分钟/工作日 09:00/周五 18:00 拉取；向用户展示/发送时按 `(id, revision)` 去重。周报 `allow_interrupt=false`，日报允许提醒。重复读取仍返回未处理稿，直到确认/作废。不要把个人 `inbox` 当作跨人管理者入口。
+调度器输出 outbox，不自动发消息。宿主可以在打开确认会话时调用 `inbox`，或部署端按每分钟/工作日 09:00/周五 18:00 拉取；向用户展示/发送时按 `(id, revision)` 去重。周报 `allow_interrupt=false`，日报允许提醒。重复读取仍返回未处理稿，直到确认/作废。不要把个人 `inbox` 当作跨人管理者入口。
 
 ### S6：部署与自测
 
@@ -145,6 +145,6 @@ docker compose -f docker-compose.yml -f docker-compose.requirements.yml exec bot
 
 ## 升级注意事项
 
-部署前备份 `REPORT_DB_PATH`，只运行一个机器人 WS 实例。飞书四表无新增必填列，旧配置继续可用。新 SQLite 增加稿件条目、原始来源指纹和手动编辑标记；升级后需保持 bot/PA/scheduler 同为 1.0.0，回滚代码时恢复升级前备份。每次确认都产生可追溯的 id/revision；不向飞书进展表写「复核通过」来冒充本人确认。
+部署前备份 `REPORT_DB_PATH`，只运行一个机器人 WS 实例。飞书四表无新增必填列，旧配置继续可用。新 SQLite 增加稿件条目、原始来源指纹和手动编辑标记；升级后需保持 bot/确认 CLI/scheduler 同为 1.0.0，回滚代码时恢复升级前备份。每次确认都产生可追溯的 id/revision；不向飞书进展表写「复核通过」来冒充本人确认。
 
 卡片表单采用飞书官方的 [form + form_submit 示例](https://open.feishu.cn/community/articles/7271149634339454978?lang=zh-CN)，回调通过 `action.form_value.summary` 提交；SDK 网关保留 raw card 更新，保存后能重新确认。

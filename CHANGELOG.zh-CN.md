@@ -2,17 +2,24 @@
 
 本项目的重要变更记录于此，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。[English](CHANGELOG.md)
 
+## [未发布]
+
+### 变更
+- 产品名定为 **Agent-Driven Requirements**；GitHub 仓库更名为 `sean-y-wang/agent-driven-requirements`。飞书机器人外显名仍可为「需求小助手」。可安装 Python 包名仍为 `feishu-bitable-bot`（import `bitable_bot`），属兼容遗留。
+- 产品边界：只做需求管理与进展跟进，**不**拉通独立 Personal Agent 产品。1.0 的确认/主动填报能力视为组织侧机器人的个人确认能力。
+- README / CONTRIBUTING / Docker 镜像标签 `agent-driven-requirements` / project.urls 等元数据对齐新品牌；卡片文案不再指向独立 PA 产品。
+
 ## [1.0.0] - 2026-11-01
 
 ### 新增
-- Personal Agent 入口：我的任务、开工档案、相关需求、到期汇报收件箱；日报/周报整单确认、逐条/整篇改摘要与作废，空编码日支持手填。
-- `personal-agent` CLI 与可测试 Python API：`progress.submit`、`daily.confirm`、`weekly.confirm`；常见中文意图映射工具建议、本人 OAuth 鉴权、严格参数校验与 fixture dry-run。
+- 组织侧个人确认能力：我的任务、开工档案、相关需求、到期汇报收件箱；日报/周报整单确认、逐条/整篇改摘要与作废，空编码日支持手填。
+- `personal-agent` CLI（历史命令名）与可测试 Python API：`progress.submit`、`daily.confirm`、`weekly.confirm`；常见中文意图映射工具建议、本人 OAuth 鉴权、严格参数校验与 fixture dry-run。
 - 持久化会话稿件，原子校验本人/版本/有效期；飞书改摘要表单和 SDK 卡片更新，原地迁移 0.9 确认数据库。
 - `verify_v10.py`、S1–S6 fixture、中英文说明及 compose 叠加配置，持久化汇报库与共用进展锁。
 
 ### 修复
-- PA 与 progress-sync 共用稳定同步键及进程锁，转交编码进展保留原来源，同日同任务同来源不双写。
-- 群进展/待复核记录不进 PA 确认流；管理者正文仅来自已确认周报快照，增加周一上周汇总，未确认个人稿与后续原始日志变化不进入正文。
+- 个人确认入口与 progress-sync 共用稳定同步键及进程锁，转交编码进展保留原来源，同日同任务同来源不双写。
+- 群进展/待复核记录不进个人确认流；管理者正文仅来自已确认周报快照，增加周一上周汇总，未确认个人稿与后续原始日志变化不进入正文。
 - 用户修改与作废在调度刷新后保留；文本改回原文也不复活旧卡片，拒绝越权、过期、重复操作。
 
 ### 部署
@@ -28,7 +35,7 @@
 - 日报/周报本地确认草稿、工作日 9:00 / 周五 18:00 调度 outbox、过期日报重拟，以及缺报、风险、完整跨人周报正文。
 - 管理员材料、PR 描述草稿、卡片快照与系统验收脚本。真实定时发送及 Agent 原生 hook 注册由部署适配器接入。
 
-## [未发布]
+## 2026-10 — 看板说明（更名前「未发布」）
 
 ### 修复
 - 看板：LLM provider 的 `base_url` 改为只读 / 需重启。此前被错误列为可热修改；现在通过 API 修改会被拒绝，界面标注「只读/重启生效」。

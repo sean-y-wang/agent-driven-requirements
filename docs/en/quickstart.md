@@ -5,8 +5,8 @@
 ## 1. Clone and configure
 
 ```bash
-git clone https://github.com/sean-y-wang/feishu-bitable-bot.git
-cd feishu-bitable-bot
+git clone https://github.com/sean-y-wang/agent-driven-requirements.git
+cd agent-driven-requirements
 cp .env.example .env
 # Recommended: Requirements Assistant
 cp config/roles.requirements.yaml config/roles.yaml

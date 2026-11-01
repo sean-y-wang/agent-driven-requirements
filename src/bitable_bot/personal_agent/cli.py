@@ -1,4 +1,4 @@
-"""JSON CLI adapter for Personal Agent tools; fixtures can only run without writes."""
+"""JSON CLI adapter for organization-bot personal confirmation tools; fixtures can only run without writes."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ class FixtureAPI:
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Personal Agent 主动填报与确认；JSON 输入/输出")
+    parser = argparse.ArgumentParser(description="组织侧个人确认与主动填报（personal-agent CLI）；JSON 输入/输出")
     parser.add_argument("method", choices=METHODS)
     parser.add_argument(
         "--config", type=Path, default=Path(os.environ.get("BOT_CONFIG", "config/roles.requirements.v09.yaml"))
@@ -76,7 +76,7 @@ def main(argv=None):
         payload = json.loads(raw)
         cfg = load_config(args.config)
         if not cfg.tables:
-            raise ValueError("Personal Agent 需要四表配置")
+            raise ValueError("个人确认入口需要四表配置")
         if args.fixture:
             api = FixtureAPI(json.loads(args.fixture.read_text()), cfg.tables)
         else:

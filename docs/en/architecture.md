@@ -4,7 +4,7 @@
 
 ## Data flow
 
-![Architecture](https://cdn.jsdelivr.net/gh/sean-y-wang/feishu-bitable-bot@main/docs/assets/architecture.png)
+![Architecture](https://cdn.jsdelivr.net/gh/sean-y-wang/agent-driven-requirements@main/docs/assets/architecture.png)
 
 ```text
 Feishu / Lark

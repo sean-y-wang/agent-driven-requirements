@@ -125,7 +125,7 @@ def confirmation_card(draft: dict) -> dict:
                 "elements": [
                     {
                         "tag": "plain_text",
-                        "content": "一次只处理本份汇报。可整单确认、改摘要或作废；逐条修改/无编码手填请在 Personal Agent 中继续。",
+                        "content": "一次只处理本份汇报。可整单确认、改摘要或作废；逐条修改/无编码手填请在确认会话或私聊中继续。",
                     }
                 ],
             },

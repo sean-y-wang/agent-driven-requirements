@@ -1,5 +1,8 @@
 # 1.0.0 实施与验收记录
 
+> **品牌说明：** 验收时模块路径仍为 `personal_agent` / 命令 `personal-agent`；产品边界为组织侧确认能力，非独立 Personal Agent。仓库现名 `sean-y-wang/agent-driven-requirements`。
+
+
 日期：2026-11-01。分支：`feat/requirements-progress-1.0`。
 基线：`origin/feat/requirements-progress-0.9`，提交 `99aa38a2fe814f749dc2d1e5c154c013797a9848`。不合并。
 
@@ -7,7 +10,7 @@
 
 | WP | 结果 | 主要位置 |
 |---|---|---|
-| WP1 Personal Agent | 完成：持久化稿件、确认/整篇或逐条修改/作废、本人任务与档案、到期 inbox | `src/bitable_bot/personal_agent/`、`requirements_v09/reports.py` |
+| WP1 个人确认入口 | 完成：持久化稿件、确认/整篇或逐条修改/作废、本人任务与档案、到期 inbox | `src/bitable_bot/personal_agent/`、`requirements_v09/reports.py` |
 | WP2 主动入口 | 完成：`progress.submit`、`daily.confirm`、`weekly.confirm`，CLI 与可测 Python API，本人 OAuth，fixture dry-run | `personal_agent/service.py`、`cli.py` |
 | WP3 集成去重 | 完成：兼容 0.9 同步键，共享表/键进程锁、远端去重、确认快照、卡片回调 | `requirements_v09/identity.py`、`writer.py`、`gateway/ws.py` |
 | WP4 文档版本 | 完成：原 PLAN 原样归档、中英指南与 CHANGELOG、README、skill 说明，版本 1.0.0 | `docs/`、`pyproject.toml` |
@@ -34,7 +37,7 @@
 - `git diff --check`：通过。
 - 归档 PLAN 与 `/Users/wangxy/Downloads/feishu-req-10-PLAN-1.0.md` 按字节一致。
 - progress-sync skill 校验通过；0.9 兼容脚本的三个 Agent 离线演练通过。
-- `docker build -t feishu-bitable-bot:req10-acceptance .`：成功。镜像 `sha256:790f5696a29d669afa50a3036ad6b2df4ebefc17ec8fb7c40a660c7ff53310bd`，容器 Python 3.12、包版本 1.0.0；主机 pytest 使用 Python 3.13。
+- `docker build -t agent-driven-requirements:req10-acceptance .`：成功。镜像 `sha256:790f5696a29d669afa50a3036ad6b2df4ebefc17ec8fb7c40a660c7ff53310bd`，容器 Python 3.12、包版本 1.0.0；主机 pytest 使用 Python 3.13。
 - 在临时目录复制正式 compose 与 requirements overlay，仅覆盖镜像 tag，使用无凭证临时 `.env`，执行 compose 配置校验和 `progress.submit` / `daily.confirm` / `weekly.confirm` 三次容器 dry-run：全部通过。
 - 同一 compose 的非 root 容器成功创建 `/data/reports.db`。验收后已清理独立项目的容器、network 和 volume；未启动飞书 WS 或发送消息。
 

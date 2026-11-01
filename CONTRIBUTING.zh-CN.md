@@ -2,7 +2,7 @@
 
 [English](CONTRIBUTING.md)
 
-感谢参与改进 **feishu-bitable-bot**。
+感谢参与改进 **Agent-Driven Requirements**（Python 包名仍为 `feishu-bitable-bot`）。
 
 ## 环境
 
