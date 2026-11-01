@@ -11,14 +11,6 @@ MANAGER_RECIPIENTS="${REPORT_MANAGER_RECIPIENTS:-$ROOT/private/managers.json}"
 DB="${REPORT_DB_PATH:-$ROOT/data/reports.db}"
 LEDGER="${REPORT_LEDGER_PATH:-$DB}"
 OUTBOX_DIR="${REPORT_OUTBOX_DIR:-$ROOT/data/outbox}"
-NOW_ARG=()
-if [[ -n "${REPORT_NOW:-}" ]]; then
-  NOW_ARG=(--now "$REPORT_NOW")
-fi
-DRY=()
-if [[ "${REPORT_DRY_RUN:-0}" == "1" ]]; then
-  DRY=(--dry-run)
-fi
 
 mkdir -p "$(dirname "$DB")" "$OUTBOX_DIR"
 STAMP=$(date +%Y%m%d-%H%M%S)
@@ -35,9 +27,13 @@ ARGS=(
   --db "$DB"
   --ledger "$LEDGER"
   --write-outbox "$OUTBOX_FILE"
-  "${NOW_ARG[@]}"
-  "${DRY[@]}"
 )
+if [[ -n "${REPORT_NOW:-}" ]]; then
+  ARGS+=(--now "$REPORT_NOW")
+fi
+if [[ "${REPORT_DRY_RUN:-0}" == "1" ]]; then
+  ARGS+=(--dry-run)
+fi
 if [[ -f "$MANAGER_RECIPIENTS" ]]; then
   ARGS+=(--manager-recipients "$MANAGER_RECIPIENTS")
 fi

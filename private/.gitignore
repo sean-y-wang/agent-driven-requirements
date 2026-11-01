@@ -1,3 +1,5 @@
-private/*
-!private/*.example.json
-!private/README.md
+# Ignore all private inputs; keep examples + README
+*
+!.gitignore
+!*.example.json
+!README.md

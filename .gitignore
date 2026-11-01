@@ -12,3 +12,6 @@ dist/
 build/
 *.egg-info/
 config/roles.yaml
+
+.env.bak*
+.env.*.bak*
