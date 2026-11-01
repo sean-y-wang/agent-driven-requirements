@@ -2,6 +2,7 @@
 
 | English | 中文 |
 |---|---|
+| [Personal Agent 1.0](en/requirements-1.0.md) | [需求进展 1.0](zh-CN/requirements-1.0.md) |
 | [Quick start](en/quickstart.md) | [快速开始](zh-CN/quickstart.md) |
 | [Feishu setup](en/feishu-setup.md) | [飞书配置](zh-CN/feishu-setup.md) |
 | [Configuration](en/configuration.md) | [配置说明](zh-CN/configuration.md) |

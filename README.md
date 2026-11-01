@@ -1,5 +1,7 @@
 # feishu-bitable-bot
 
+**1.0.0 Personal Agent:** active progress/report APIs, owned tasks and dossiers, editable confirmations, shared skill deduplication, and confirmed-only manager reports. [Guide](docs/en/requirements-1.0.md) · [中文](docs/zh-CN/requirements-1.0.md).
+
 **0.9.0:** [Requirements progress deployment guide (中文)](docs/zh-CN/requirements-0.9.md) · [Local progress-sync skill](skills/progress-sync/SKILL.md). Extends the same bot with four tables and daily/weekly confirmation scaffolding.
 
 

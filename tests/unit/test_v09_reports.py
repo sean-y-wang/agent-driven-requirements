@@ -37,11 +37,19 @@ def test_schedule_timezone_boundaries(now, expected):
 
 def test_payload_snapshot_and_manager_full_body():
     output = scheduled_payloads(data(), datetime.fromisoformat("2026-11-06T18:00:00+08:00"), ReportStore())
-    assert output == json.loads((FIXTURES / "report_cards.json").read_text())
+    # Revisions are random to prevent an old A→B→A card from becoming valid again.
+    def normalize(value):
+        if isinstance(value, dict):
+            return {k: "<revision>" if k == "revision" else normalize(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [normalize(v) for v in value]
+        return value
+
+    assert normalize(output) == json.loads((FIXTURES.parent / "v10/report_cards.json").read_text())
     weekly = [x for x in output["confirmations"] if x["kind"] == "weekly"]
     assert all(not x["allow_interrupt"] for x in weekly)
     body = output["manager"]["body"]
-    assert "完成接口联调" in body and "推进评测接入" in body and "测试环境阻塞" in body
+    assert "完成接口联调" not in body and "推进评测接入" not in body and "测试环境阻塞" not in body
     assert output["manager"]["missing"] == ["小王", "小李"]
 
 
@@ -122,5 +130,6 @@ def test_live_input_reads_all_rows_and_preserves_owner(monkeypatch, tmp_path, ca
         == 0
     )
     result = json.loads(capsys.readouterr().out)
-    assert "完成现场联调" in result["manager"]["body"]
+    assert "完成现场联调" not in result["manager"]["body"]
+    assert "完成现场联调" in result["confirmations"][0]["card"]["elements"][0]["text"]["content"]
     assert result["confirmations"][0]["recipient"] == "ou_alice"

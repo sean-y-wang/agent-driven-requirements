@@ -54,6 +54,10 @@ class Store:
         self._lock = threading.Lock()
         self.clock = clock
 
+    def close(self) -> None:
+        with self._lock:
+            self._db.close()
+
     # ---- dedup -------------------------------------------------------
     def seen(self, key: str, ttl: float = 86400) -> bool:
         """Atomically record key; return True if it was already seen (and not expired)."""

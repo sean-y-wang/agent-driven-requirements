@@ -72,14 +72,10 @@ class Gateway:
         # Build SDK response when available; otherwise return dict (tests / stubs).
         try:
             from lark_oapi.event.callback.model.p2_card_action_trigger import (
-                CallBackToast,
                 P2CardActionTriggerResponse,
             )
 
-            toast = result.get("toast") or {}
-            return P2CardActionTriggerResponse(
-                {"toast": CallBackToast({"type": toast.get("type") or "info", "content": toast.get("content") or ""})}
-            )
+            return P2CardActionTriggerResponse(result)
         except Exception:
             return result
 

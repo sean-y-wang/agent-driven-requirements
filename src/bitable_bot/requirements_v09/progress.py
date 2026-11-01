@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import fcntl
-import hashlib
 import json
 import os
 import subprocess
@@ -17,6 +16,7 @@ from zoneinfo import ZoneInfo
 from ..config import ConfigError, load_config
 from ..session import Store
 from ..writer import BitableWriter, FeishuAPIError, WriteError
+from .identity import progress_key
 from .models import MODULES
 from .user_api import UserAPI, cell_text
 from .writer import MultiTableWriter
@@ -146,7 +146,7 @@ def sync(
         table = cfg.tables.tasks
         rows = api.list_all_records(table.app_token, table.table_id)
     task = match_task(rows, cfg.tables.tasks, user_id, module, task_id)
-    key = hashlib.sha256(json.dumps([user_id, day, task["record_id"], agent], ensure_ascii=False).encode()).hexdigest()
+    key = progress_key(user_id, day, task["record_id"], agent)
     values = {
         "task": task["record_id"],
         "module": module,
@@ -158,11 +158,15 @@ def sync(
         "sync_key": key,
     }
     # Remote sync_key is authoritative. Do not retain a stale local record index after deletion.
-    writer = MultiTableWriter(BitableWriter(api, Store()), cfg.tables)
-    if dry_run:
-        return writer.write("progress", values, key, dry_run=True)
-    result = writer.upsert_progress(values)
-    return {"record_id": result.record_id, "updated": result.duplicated}
+    store = Store()
+    try:
+        writer = MultiTableWriter(BitableWriter(api, store), cfg.tables)
+        if dry_run:
+            return writer.write("progress", values, key, dry_run=True)
+        result = writer.upsert_progress(values)
+        return {"record_id": result.record_id, "updated": result.duplicated}
+    finally:
+        store.close()
 
 
 def main(argv=None):
@@ -200,6 +204,7 @@ def main(argv=None):
             if args.fixture_tasks and not args.dry_run:
                 raise ValueError("fixture 仅供 dry-run，不能写入真实表。")
             cfg = load_config(args.config)
+            read_mapping(args.mapping, args.repo)  # local guidance before attempting authentication
             day = datetime.now(ZoneInfo(cfg.timezone)).date().isoformat()
             api = None if args.fixture_tasks else UserAPI(os.environ.get("FEISHU_USER_ACCESS_TOKEN", ""))
             fixture = json.loads(args.fixture_tasks.read_text()) if args.fixture_tasks else None

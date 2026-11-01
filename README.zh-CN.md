@@ -1,5 +1,7 @@
 # feishu-bitable-bot
 
+**1.0.0 Personal Agent：** 主动填进展/日报/周报、我的任务与开工档案、改摘要/作废、skill 去重及仅已确认的管理者正文。[部署与 API](docs/zh-CN/requirements-1.0.md) · [原始 PLAN](docs/zh-CN/requirements-1.0-plan.md)。
+
 **0.9.0：** [需求收集与进展同步部署说明](docs/zh-CN/requirements-0.9.md) · [本机 progress-sync skill](skills/progress-sync/SKILL.md)。扩展原需求小助手，提供四表入池、本人进展同步与日报/周报确认骨架。
 
 

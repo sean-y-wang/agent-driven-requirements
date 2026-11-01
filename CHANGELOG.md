@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). [简体中文](CHANGELOG.zh-CN.md)
 
+## [1.0.0] - 2026-11-01
+
+### Added
+- Personal Agent tools: owned tasks, task dossiers, related requirements, due report inbox, per-item/full-summary edits, whole-report confirmation and void actions. Empty coding days offer manual reporting.
+- Authenticated `personal-agent` CLI and testable Python API for `progress.submit`, `daily.confirm`, `weekly.confirm`; conservative Chinese intent-to-tool proposals, personal OAuth identity, strict payload validation and fixture-only dry runs.
+- Persistent owner/revision/expiry-checked report state, Feishu edit form callbacks and SDK card updates; existing 0.9 confirmation databases migrate in place.
+- `verify_v10.py`, S1–S6 fixtures, bilingual guides, and a requirements compose overlay with persistent report DB and shared progress locks.
+
+### Fixed
+- Share stable progress keys and process locks across PA and progress-sync; preserve source identity when forwarding skill entries.
+- Exclude group/review-required progress from personal confirmation. Manager reports use immutable confirmed weekly snapshots, include Monday's previous-week output, and never publish pending drafts or later raw updates.
+- Keep user edits and void states across scheduler refresh; invalidate old revisions even when text is edited back to an earlier value.
+
+### Deployment
+- No additional Feishu tables/columns. Confirmation status remains in the shared local report database. Hosts consume/deduplicate the outbox; no unsolicited delivery or global Agent hooks.
+- Offline acceptance and live box/WebSocket/tenant acceptance are reported separately. See [deployment guide](docs/en/requirements-1.0.md).
+
 ## [0.9.0] - 2026-11-01
 
 ### Added

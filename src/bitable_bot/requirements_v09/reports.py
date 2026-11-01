@@ -9,6 +9,7 @@ import os
 import sqlite3
 import sys
 import threading
+import uuid
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -34,6 +35,7 @@ class ProgressEntry(BaseModel):
     risk: str = ""
     review: bool = False
     agent: str = "其他"
+    record_id: str = ""
 
 
 class ReportInput(BaseModel):
@@ -60,6 +62,7 @@ def entries_from_records(rows, table) -> list[ProgressEntry]:
         for person in fields.get(cols["author"]) or []:
             entries.append(
                 ProgressEntry(
+                    record_id=row.get("record_id", ""),
                     author=person.get("id", person.get("open_id", "")),
                     day=value("day"),
                     task=value("task") or "未关联任务",
@@ -100,7 +103,7 @@ def period(kind: str, today: date) -> tuple[date, date]:
 def personal_body(member: Member, rows: list[ProgressEntry], start: date, end: date) -> str:
     lines = [f"{member.name}（{start} 至 {end}）"]
     if not rows:
-        lines.append("暂无进展记录，请补充或确认本期无进展。")
+        lines.append("无编码/请手填：可提交进展、填写非编码工作，或确认本期无进展。")
     for row in sorted(rows, key=lambda r: (r.day, r.module, r.task, r.agent)):
         suffix = "；待复核" if row.review else ""
         risk = f"；风险：{row.risk}" if row.risk else ""
@@ -119,44 +122,91 @@ def confirmation_card(draft: dict) -> dict:
             {"tag": "div", "text": {"tag": "plain_text", "content": note + draft["body"]}},
             {
                 "tag": "note",
-                "elements": [{"tag": "plain_text", "content": "只有本人可确认；需修改时先更新进展，再重新生成。"}],
+                "elements": [
+                    {
+                        "tag": "plain_text",
+                        "content": "一次只处理本份汇报。可整单确认、改摘要或作废；逐条修改/无编码手填请在 Personal Agent 中继续。",
+                    }
+                ],
             },
             {
                 "tag": "action",
                 "actions": [
                     {
                         "tag": "button",
-                        "type": "primary",
-                        "text": {"tag": "plain_text", "content": "确认"},
-                        "value": value,
+                        "type": style,
+                        "text": {"tag": "plain_text", "content": label},
+                        "value": {**value, "action": action},
                     }
+                    for action, label, style in [
+                        ("confirm", "整单确认", "primary"),
+                        ("edit", "改摘要", "default"),
+                        ("void", "作废", "danger"),
+                    ]
                 ],
             },
         ],
     }
 
 
+def personal_entries(entries):
+    """Group progress and review-required rows never enter a personal confirmation."""
+    return [r for r in entries if r.agent != "群" and not r.review]
+
+
 class ReportStore:
+    """SQLite is the confirmation authority; confirmed bodies are immutable snapshots."""
+
     def __init__(self, path=":memory:"):
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
+        self.db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None, timeout=30)
         self.db.row_factory = sqlite3.Row
         self.lock = threading.RLock()
         self.db.execute("""CREATE TABLE IF NOT EXISTS report_drafts (
             id TEXT PRIMARY KEY, owner TEXT NOT NULL, kind TEXT NOT NULL, day TEXT NOT NULL,
             body TEXT NOT NULL, revision TEXT NOT NULL, status TEXT NOT NULL, redrafted INTEGER NOT NULL
         )""")
-
-    def draft(self, owner, kind, day, body):
-        rid = hashlib.sha256(f"{owner}:{kind}:{day}".encode()).hexdigest()[:24]
-        revision = hashlib.sha256(body.encode()).hexdigest()[:16]
+        # Additive migration of 0.9 databases, shared by bot, scheduler and PA.
         with self.lock:
             self.db.execute("BEGIN IMMEDIATE")
             try:
-                old = self.db.execute("SELECT * FROM report_drafts WHERE id=?", (rid,)).fetchone()
-                if old and (old["status"] == "confirmed" or old["revision"] == revision):
-                    result = dict(old)
+                columns = {r[1] for r in self.db.execute("PRAGMA table_info(report_drafts)")}
+                for name, default in [("entries", "[]"), ("source_hash", ""), ("edited", "0")]:
+                    if name not in columns:
+                        self.db.execute(
+                            f"ALTER TABLE report_drafts ADD COLUMN {name} TEXT NOT NULL DEFAULT '{default}'"
+                        )
+                self.db.execute("COMMIT")
+            except Exception:
+                self.db.execute("ROLLBACK")
+                raise
+
+    @staticmethod
+    def decode(row):
+        if row is None:
+            return None
+        result = dict(row)
+        result["entries"] = json.loads(result["entries"])
+        return result
+
+    def get(self, report_id):
+        with self.lock:
+            return self.decode(self.db.execute("SELECT * FROM report_drafts WHERE id=?", (report_id,)).fetchone())
+
+    def draft(self, owner, kind, day, body, entries=None, *, manual=False):
+        if not owner or kind not in ("daily", "weekly") or not body.strip():
+            raise ValueError("汇报需要本人身份、类型和非空摘要")
+        day = date.fromisoformat(day).isoformat()
+        rid = hashlib.sha256(f"{owner}:{kind}:{day}".encode()).hexdigest()[:24]
+        serialized = json.dumps(entries or [], ensure_ascii=False, sort_keys=True)
+        source_hash = hashlib.sha256((body + serialized).encode()).hexdigest()
+        with self.lock:
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                old = self.get(rid)
+                if old and (old["status"] != "pending" or old["source_hash"] == source_hash or old["edited"] == "1"):
+                    result = old
                 else:
                     previous = self.db.execute(
                         "SELECT id FROM report_drafts WHERE owner=? AND kind=? AND day<? AND status='pending'",
@@ -168,73 +218,162 @@ class ReportStore:
                     )
                     redrafted = bool(previous) or bool(old and old["redrafted"])
                     self.db.execute(
-                        "INSERT OR REPLACE INTO report_drafts VALUES (?,?,?,?,?,?,?,?)",
-                        (rid, owner, kind, day, body, revision, "pending", int(redrafted)),
+                        """INSERT OR REPLACE INTO report_drafts
+                        (id,owner,kind,day,body,revision,status,redrafted,entries,source_hash,edited)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            rid,
+                            owner,
+                            kind,
+                            day,
+                            body,
+                            uuid.uuid4().hex[:16],
+                            "pending",
+                            int(redrafted),
+                            serialized,
+                            source_hash,
+                            "1" if manual else "0",
+                        ),
                     )
-                    result = dict(self.db.execute("SELECT * FROM report_drafts WHERE id=?", (rid,)).fetchone())
+                    result = self.get(rid)
                 self.db.execute("COMMIT")
                 return result
             except Exception:
                 self.db.execute("ROLLBACK")
                 raise
 
-    def confirm(self, report_id: str, revision: str, operator: str, today: date) -> bool:
-        if not operator:
+    @staticmethod
+    def valid(draft, revision, operator, today):
+        if not draft or not operator or draft["owner"] != operator or draft["revision"] != revision:
             return False
-        with self.lock:
-            # Daily confirmations expire the next calendar day, even before next scheduler tick.
-            cur = self.db.execute(
-                """UPDATE report_drafts SET status='confirmed'
-                WHERE id=? AND owner=? AND revision=? AND status='pending'
-                AND (kind!='daily' OR day=?)""",
-                (report_id, operator, revision, today.isoformat()),
-            )
-            return cur.rowcount == 1
+        day = date.fromisoformat(draft["day"])
+        expiry = day if draft["kind"] == "daily" else day + timedelta(days=6 - day.weekday())
+        return draft["status"] == "pending" and day <= today <= expiry
 
-    def confirmed_owners(self, kind: str, day: date) -> set[str]:
+    def act(self, report_id, revision, operator, today, action, *, body=None, edits=None):
+        """Atomic owner/revision/expiry check plus mutation. Never trust an owner from an action value."""
+        if action not in ("confirm", "edit", "void"):
+            raise ValueError("未知确认操作")
+        if action != "edit" and (body is not None or edits is not None):
+            raise ValueError("确认/作废不能夹带未展示的摘要修改")
+        with self.lock:
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                draft = self.get(report_id)
+                if not self.valid(draft, revision, operator, today):
+                    raise ValueError("确认已过期、已处理、版本已变化或非本人操作")
+                if action == "edit":
+                    if body is not None and edits is not None:
+                        raise ValueError("整篇摘要与逐条修改不能同时提交")
+                    if edits is not None:
+                        if not edits or not isinstance(edits, dict):
+                            raise ValueError("逐条修改需要条目索引与摘要")
+                        rows = [ProgressEntry.model_validate(r) for r in draft["entries"]]
+                        for index, summary in edits.items():
+                            if not str(index).isdigit() or int(index) >= len(rows):
+                                raise ValueError("条目不存在")
+                            if not isinstance(summary, str) or not summary.strip() or len(summary) > 4000:
+                                raise ValueError("条目摘要必须为 1–4000 字")
+                            rows[int(index)].summary = summary.strip()
+                        draft["entries"] = [r.model_dump(mode="json") for r in rows]
+                        start, end = period(draft["kind"], date.fromisoformat(draft["day"]))
+                        body = personal_body(Member(open_id=operator, name=operator), rows, start, end)
+                    if not isinstance(body, str) or not body.strip() or len(body) > 20000:
+                        raise ValueError("摘要必须为 1–20000 字；空进展可手填「无编码，完成方案讨论」")
+                    draft["body"] = body.strip()
+                    draft["revision"] = uuid.uuid4().hex[:16]
+                    draft["edited"] = "1"
+                    # Whole-body edits replace the old content, including its risk metadata.
+                    if edits is None:
+                        draft["entries"] = []
+                else:
+                    draft["status"] = "confirmed" if action == "confirm" else "void"
+                self.db.execute(
+                    "UPDATE report_drafts SET body=?,revision=?,status=?,entries=?,edited=? WHERE id=?",
+                    (
+                        draft["body"],
+                        draft["revision"],
+                        draft["status"],
+                        json.dumps(draft["entries"], ensure_ascii=False),
+                        draft["edited"],
+                        report_id,
+                    ),
+                )
+                self.db.execute("COMMIT")
+                return draft
+            except Exception:
+                self.db.execute("ROLLBACK")
+                raise
+
+    def confirm(self, report_id: str, revision: str, operator: str, today: date) -> bool:
+        try:
+            self.act(report_id, revision, operator, today, "confirm")
+            return True
+        except ValueError:
+            return False
+
+    def confirmed_reports(self, kind, start, end):
         with self.lock:
             rows = self.db.execute(
-                "SELECT owner FROM report_drafts WHERE kind=? AND day=? AND status='confirmed'", (kind, day.isoformat())
+                """SELECT * FROM report_drafts WHERE kind=? AND day>=? AND day<=?
+                AND status='confirmed' ORDER BY day,id""",
+                (kind, start.isoformat(), end.isoformat()),
             ).fetchall()
-        return {r["owner"] for r in rows}
+        # At most one full report per person in the manager body, latest confirmed submission wins.
+        return list({r["owner"]: self.decode(r) for r in rows}.values())
+
+    def confirmed_owners(self, kind: str, day: date) -> set[str]:
+        return {r["owner"] for r in self.confirmed_reports(kind, day, day)}
 
     def close(self):
         self.db.close()
 
 
-def manager_report(members: list[Member], entries: list[ProgressEntry], today: date, confirmed: set[str]) -> dict:
+def manager_report(members, entries, today, confirmed, *, snapshots=None) -> dict:
     start, end = period("weekly", today)
-    rows = [p for p in entries if start <= p.day <= end]
+    rows = [p for p in personal_entries(entries) if start <= p.day <= end and p.author in confirmed]
+    if snapshots is not None:
+        rows = [ProgressEntry.model_validate(p) for draft in snapshots for p in draft["entries"]]
+        confirmed = {d["owner"] for d in snapshots}
     missing = [m.name for m in members if m.open_id not in confirmed]
     names = {m.open_id: m.name for m in members}
-    risks = [f"{names.get(p.author, p.author)}｜{p.task}：{p.risk or '进展待复核'}" for p in rows if p.risk or p.review]
-    # Preserve entries by people outside the roster as well; no top-N truncation.
-    all_members = [
-        *members,
-        *(Member(open_id=oid, name=oid) for oid in sorted({p.author for p in rows} - names.keys())),
-    ]
-    body = "\n\n".join(personal_body(m, [p for p in rows if p.author == m.open_id], start, end) for m in all_members)
+    risks = [f"{names.get(p.author, p.author)}｜{p.task}：{p.risk}" for p in rows if p.risk]
+    if snapshots is not None:
+        body = "\n\n".join(d["body"] for d in snapshots)
+    else:
+        body = "\n\n".join(
+            personal_body(
+                Member(open_id=oid, name=names.get(oid, oid)), [p for p in rows if p.author == oid], start, end
+            )
+            for oid in sorted(confirmed)
+        )
     return {
         "period": f"{start}/{end}",
         "missing": missing,
         "risks": risks,
-        "body": f"跨人周报（{start} 至 {end}）\n缺报/未确认：{'、'.join(missing) or '无'}\n"
-        + "风险：\n"
+        "body": f"跨人周报（{start} 至 {end}）\n缺报/未确认：{'、'.join(missing) or '无'}\n风险：\n"
         + ("\n".join(risks) or "无")
         + "\n\n"
-        + body,
+        + (body or "暂无已确认周报。"),
     }
 
 
 def scheduled_payloads(data: ReportInput, now: datetime, store: ReportStore, timezone="Asia/Shanghai") -> dict:
-    today = now.astimezone(ZoneInfo(timezone)).date()
     kinds = due_kinds(now, timezone)
+    local = now.astimezone(ZoneInfo(timezone))
+    today = local.date()
     out = []
     for kind in kinds:
         start, end = period(kind, today)
         for member in data.members:
-            rows = [r for r in data.progress if r.author == member.open_id and start <= r.day <= end]
-            draft = store.draft(member.open_id, kind, today.isoformat(), personal_body(member, rows, start, end))
+            rows = [r for r in personal_entries(data.progress) if r.author == member.open_id and start <= r.day <= end]
+            draft = store.draft(
+                member.open_id,
+                kind,
+                today.isoformat(),
+                personal_body(member, rows, start, end),
+                [r.model_dump(mode="json") for r in rows],
+            )
             if draft["status"] == "pending":
                 out.append(
                     {
@@ -245,13 +384,18 @@ def scheduled_payloads(data: ReportInput, now: datetime, store: ReportStore, tim
                         "delivery": "scheduled",
                         "allow_interrupt": kind == "daily",
                         "card": confirmation_card(draft),
+                        "items": draft["entries"],
+                        "empty": not rows,
+                        "manual_action": "progress.submit",
+                        "status": draft["status"],
                     }
                 )
-    manager = (
-        manager_report(data.members, data.progress, today, store.confirmed_owners("weekly", today))
-        if "weekly" in kinds
-        else None
-    )
+    manager = None
+    if "weekly" in kinds or (local.weekday() == 0 and "daily" in kinds):
+        anchor = today - timedelta(days=1) if local.weekday() == 0 else today
+        start, end = period("weekly", anchor)
+        snapshots = store.confirmed_reports("weekly", start, end)
+        manager = manager_report(data.members, [], anchor, set(), snapshots=snapshots)
     return {"confirmations": out, "manager": manager}
 
 

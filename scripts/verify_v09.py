@@ -35,8 +35,9 @@ def main():
     assert {o.value for o in fields["agent"].options} == set(AGENTS)
     assert {o.value for o in fields["project"].options} == set(MODULES)
     assert fields["review"].type == "checkbox"
-    assert __version__ == tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"] == "0.9.0"
-    assert importlib.metadata.version("feishu-bitable-bot") == "0.9.0"
+    assert __version__ in ("0.9.0", "1.0.0")
+    assert __version__ == tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    assert importlib.metadata.version("feishu-bitable-bot") == __version__
     for name in ("CHANGELOG.md", "CHANGELOG.zh-CN.md"):
         assert "## [0.9.0]" in (ROOT / name).read_text()
     for name in ("README.md", "README.zh-CN.md"):
@@ -113,10 +114,10 @@ def main():
             )
         )
         assert len(reports["confirmations"]) == 4
-        assert "完成接口联调" in reports["manager"]["body"] and "推进评测接入" in reports["manager"]["body"]
+        assert "完成接口联调" not in reports["manager"]["body"] and "推进评测接入" not in reports["manager"]["body"]
         assert not db.exists()
     print(
-        "PASS: 0.9.0 version, four-table Chinese config, EN/ZH docs, installed skill dry-run × 3 agents, report scheduler dry-run"
+        "PASS: 0.9 compatibility, four-table Chinese config, EN/ZH docs, installed skill dry-run × 3 agents, report scheduler dry-run"
     )
     return 0
 

@@ -1,0 +1,17 @@
+{
+  "user": "ou_alice",
+  "requirements": [
+    {"record_id":"recReq","fields":{"需求标题":"支持进度填报","需求描述":"一条进展一次确认","所属模块":"AIPaaS 4.0","状态":"待评审","来源智能体":"群"}},
+    {"record_id":"recPrivate","fields":{"需求标题":"其他人的需求"}}
+  ],
+  "tasks": [
+    {"record_id":"recTask","fields":{"任务标题":"主动填报入口","所属模块":"AIPaaS 4.0","参与人":[{"id":"ou_alice"}],"需求记录标识":"recReq","状态":"进行中"}},
+    {"record_id":"recOther","fields":{"任务标题":"其他人的任务","所属模块":"AICloud Labs","参与人":[{"id":"ou_bob"}],"需求记录标识":"recPrivate","状态":"进行中"}}
+  ],
+  "modules": [{"record_id":"recModule","fields":{"所属模块":"AIPaaS 4.0","项目名称":"AI 平台","仓库地址":"https://example.invalid/repo"}}],
+  "progress": [
+    {"record_id":"recPersonal","fields":{"任务记录标识":"recTask","所属模块":"AIPaaS 4.0","记录人":[{"id":"ou_alice"}],"日期":"2026-11-05","进展摘要":"完成主动入口","来源智能体":"Codex","复核标记":false,"风险":"依赖联调"}},
+    {"record_id":"recGroup","fields":{"任务记录标识":"recTask","所属模块":"AIPaaS 4.0","记录人":[{"id":"ou_alice"}],"日期":"2026-11-05","进展摘要":"群进展等待复核","来源智能体":"群","复核标记":true}},
+    {"record_id":"recBob","fields":{"任务记录标识":"recOther","所属模块":"AICloud Labs","记录人":[{"id":"ou_bob"}],"日期":"2026-11-05","进展摘要":"未确认秘密草稿","来源智能体":"Orca","复核标记":false}}
+  ]
+}

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "feishu-bitable-bot"
-version = "0.9.0"
+version = "1.0.0"
 description = "Feishu/Lark bot: built-in Requirements Assistant (需求小助手) + multi-role Bitable recording — context, interactive confirm, progress query"
 readme = "README.md"
 license = "MIT"
@@ -22,6 +22,7 @@ dependencies = [
 dev = ["pytest>=8", "pytest-cov>=5", "time-machine>=2.13", "ruff>=0.5"]
 
 [project.scripts]
+personal-agent = "bitable_bot.personal_agent.cli:main"
 bitable-bot = "bitable_bot.main:main"
 progress-sync = "bitable_bot.requirements_v09.progress:main"
 requirements-reports = "bitable_bot.requirements_v09.reports:main"

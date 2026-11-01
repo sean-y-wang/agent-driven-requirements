@@ -70,8 +70,12 @@ class BitableWriter:
         by_key = {f.key: f.field for f in role.fields}
         return {by_key[k]: v for k, v in values.items() if k in by_key}
 
-    def write(self, role: Role, values: dict[str, Any], source_message_id: str) -> WriteResult:
-        existing = self.store.get_record(source_message_id)
+    def write(
+        self, role: Role, values: dict[str, Any], source_message_id: str, *, check_existing: bool = True
+    ) -> WriteResult:
+        # Remote upsert callers already checked the authoritative table; a stale local index
+        # must not suppress recreation after a remote deletion. Keep token/retry behavior shared.
+        existing = self.store.get_record(source_message_id) if check_existing else None
         if existing:
             return WriteResult(existing[0], existing[1], duplicated=True)
         payload = self.map_fields(role, values)

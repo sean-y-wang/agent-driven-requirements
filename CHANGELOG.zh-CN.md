@@ -2,6 +2,23 @@
 
 本项目的重要变更记录于此，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。[English](CHANGELOG.md)
 
+## [1.0.0] - 2026-11-01
+
+### 新增
+- Personal Agent 入口：我的任务、开工档案、相关需求、到期汇报收件箱；日报/周报整单确认、逐条/整篇改摘要与作废，空编码日支持手填。
+- `personal-agent` CLI 与可测试 Python API：`progress.submit`、`daily.confirm`、`weekly.confirm`；常见中文意图映射工具建议、本人 OAuth 鉴权、严格参数校验与 fixture dry-run。
+- 持久化会话稿件，原子校验本人/版本/有效期；飞书改摘要表单和 SDK 卡片更新，原地迁移 0.9 确认数据库。
+- `verify_v10.py`、S1–S6 fixture、中英文说明及 compose 叠加配置，持久化汇报库与共用进展锁。
+
+### 修复
+- PA 与 progress-sync 共用稳定同步键及进程锁，转交编码进展保留原来源，同日同任务同来源不双写。
+- 群进展/待复核记录不进 PA 确认流；管理者正文仅来自已确认周报快照，增加周一上周汇总，未确认个人稿与后续原始日志变化不进入正文。
+- 用户修改与作废在调度刷新后保留；文本改回原文也不复活旧卡片，拒绝越权、过期、重复操作。
+
+### 部署
+- 无新增飞书表/列，确认状态保留在共用本地汇报库；宿主消费 outbox 并去重，不自动发送或注册全局 Agent 钩子。
+- 离线验收与 box/WS/租户实测分别记录，见 [部署说明](docs/zh-CN/requirements-1.0.md)。
+
 ## [0.9.0] - 2026-11-01
 
 ### 新增

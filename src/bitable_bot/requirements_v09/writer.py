@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..writer.bitable import BitableWriter, WriteError, WriteResult, friendly, record_url
 from ..writer.feishu_api import FeishuAPIError
+from .identity import progress_lock
 from .models import TableName, Tables
 from .user_api import cell_text
 
@@ -32,7 +33,12 @@ class MultiTableWriter:
         return self.writer.write(table.role(name), values, self.key(name, source))
 
     def upsert_progress(self, values: dict) -> WriteResult:
-        """Remote key lookup survives local DB loss; caller serializes personal sync jobs."""
+        """Serialize PA + skill read/upsert across local processes, independent of mapping path."""
+        table = self.tables.progress
+        with progress_lock(table.app_token, table.table_id, values["sync_key"]):
+            return self._upsert_progress(values)
+
+    def _upsert_progress(self, values: dict) -> WriteResult:
         table = self.tables.progress
         role = table.role("progress")
         key = values["sync_key"]
@@ -47,6 +53,6 @@ class MultiTableWriter:
                 rid = hits[0]["record_id"]
                 self.writer.api.update_record(table.app_token, table.table_id, rid, payload)
                 return WriteResult(rid, record_url(role, rid, self.writer.base_url), duplicated=True)
-            return self.write("progress", values, key)
+            return self.writer.write(role, values, self.key("progress", key), check_existing=False)
         except FeishuAPIError as e:
             raise WriteError(friendly(e), e.code) from e

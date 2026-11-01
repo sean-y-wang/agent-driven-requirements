@@ -921,12 +921,12 @@ class BotService:
         action = (payload.get("action") or {}) if isinstance(payload, dict) else {}
         value = action.get("value") if isinstance(action, dict) else None
         if isinstance(value, dict) and value.get("kind") == "report_confirm":
-            operator = (payload.get("operator") or {}).get("open_id", "")
-            ok = self.report_store is not None and self.report_store.confirm(
-                str(value.get("report_id", "")), str(value.get("revision", "")), operator,
-                datetime.fromtimestamp(self.clock(), ZoneInfo(self.cfg.timezone)).date())
-            return {"toast": {"type": "success" if ok else "error",
-                              "content": "汇报已确认" if ok else "确认已过期、已处理或非本人操作"}}
+            from .personal_agent.cards import handle_report_action
+
+            return handle_report_action(
+                self.report_store, payload,
+                datetime.fromtimestamp(self.clock(), ZoneInfo(self.cfg.timezone)).date(),
+            )
         if not isinstance(value, dict) or value.get("kind") != "confirm":
             return {"toast": {"type": "info", "content": "未知操作"}}
         op = value.get("action")
