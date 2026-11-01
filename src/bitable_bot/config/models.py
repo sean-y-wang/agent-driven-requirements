@@ -228,6 +228,47 @@ class SessionConfig(BaseModel):
     max_followups: int = 2
 
 
+STATUSES = ("待分诊", "待评审", "进行中", "阻塞", "已完成", "已关闭")
+AGENTS = ("Claude Code", "Codex", "Orca", "群", "其他")
+MODULES = ("AIPaaS 4.0", "AICloud Labs")
+TableName = Literal["requirements", "tasks", "progress", "modules"]
+
+
+class TableSpec(Target):
+    fields: list[FieldSpec]
+
+    @model_validator(mode="after")
+    def unique_fields(self):
+        for attr in ("key", "field"):
+            vals = [getattr(f, attr) for f in self.fields]
+            if len(vals) != len(set(vals)):
+                raise ValueError(f"duplicate table {attr}")
+        return self
+
+    def role(self, name: str) -> Role:
+        return Role(command=f"/{name}", name=name, target=Target(app_token=self.app_token, table_id=self.table_id),
+                    fields=self.fields)
+
+
+class Tables(BaseModel):
+    requirements: TableSpec
+    tasks: TableSpec
+    progress: TableSpec
+    modules: TableSpec
+
+    def get(self, name: TableName) -> TableSpec:
+        if name not in ("requirements", "tasks", "progress", "modules"):
+            raise ValueError(f"unknown table: {name}")
+        return getattr(self, name)
+
+
+class IntakeConfig(BaseModel):
+    observe_groups: bool = False
+    # Administrator acknowledgement; the application cannot infer missing push events.
+    all_messages_permission: bool = False
+    observed_chats: list[str] = Field(default_factory=list)
+
+
 class AppConfig(BaseModel):
     version: int = 1
     timezone: str = "Asia/Shanghai"
@@ -249,13 +290,43 @@ class AppConfig(BaseModel):
     chats_allowlist: list[str] = Field(default_factory=list)
     audit_store_text: bool = True
     roles: list[Role]
+    tables: Tables | None = None
+    intake: IntakeConfig = Field(default_factory=IntakeConfig)
     chat_field_bindings: list[ChatFieldBinding] = Field(default_factory=list)
     remote_config: RemoteConfig = Field(default_factory=RemoteConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _bind_requirements_table(cls, data):
+        if isinstance(data, dict) and isinstance(data.get("tables"), dict) and len(data.get("roles", [])) == 1:
+            table = data["tables"].get("requirements")
+            if isinstance(table, dict):
+                role = {**data["roles"][0], "target": {k: table.get(k) for k in ("app_token", "table_id")},
+                        "fields": table.get("fields", []), "confirm_before_write": True}
+                data = {**data, "roles": [role]}
+        return data
 
     @model_validator(mode="after")
     def _check(self) -> AppConfig:
         if self.dedicated and len(self.roles) != 1:
             raise ValueError("dedicated=true requires exactly one role (专属机器人场景)")
+        if self.tables:
+            if self.scenario != "requirements" or not self.dedicated:
+                raise ValueError("tables requires the existing dedicated requirements scenario")
+            required = {
+                "requirements": {"title", "status", "review", "agent"},
+                "tasks": {"title", "module", "participants", "status"},
+                "progress": {"task", "module", "author", "day", "summary", "agent", "review", "sync_key", "risk", "source_message"},
+                "modules": {"module", "project"},
+            }
+            for name, keys in required.items():
+                if not keys <= {f.key for f in self.tables.get(name).fields}:
+                    raise ValueError(f"tables.{name} missing keys: {sorted(keys)}")
+        if self.intake.observe_groups:
+            if not self.tables or not self.intake.all_messages_permission:
+                raise ValueError("群自动识别需要四表配置及群全部消息可读权限；请管理员开通并设置 all_messages_permission=true")
+            if not self.intake.observed_chats:
+                raise ValueError("群自动识别需要 observed_chats 明确指定群")
         seen: set[str] = set()
         for r in self.roles:
             for c in r.commands:

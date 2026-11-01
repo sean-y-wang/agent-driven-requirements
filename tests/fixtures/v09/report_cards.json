@@ -1,0 +1,239 @@
+{
+  "confirmations": [
+    {
+      "id": "6b083615914955ed81100ad5",
+      "revision": "ebcdb83a30211917",
+      "recipient": "ou_alice",
+      "kind": "daily",
+      "delivery": "scheduled",
+      "allow_interrupt": true,
+      "card": {
+        "config": {
+          "wide_screen_mode": true
+        },
+        "header": {
+          "template": "blue",
+          "title": {
+            "tag": "plain_text",
+            "content": "请确认个人日报"
+          }
+        },
+        "elements": [
+          {
+            "tag": "div",
+            "text": {
+              "tag": "plain_text",
+              "content": "小王（2026-11-05 至 2026-11-05）\n- 2026-11-05｜AIPaaS 4.0｜recAPI｜完成接口联调（Codex）"
+            }
+          },
+          {
+            "tag": "note",
+            "elements": [
+              {
+                "tag": "plain_text",
+                "content": "只有本人可确认；需修改时先更新进展，再重新生成。"
+              }
+            ]
+          },
+          {
+            "tag": "action",
+            "actions": [
+              {
+                "tag": "button",
+                "type": "primary",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "确认"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "6b083615914955ed81100ad5",
+                  "revision": "ebcdb83a30211917"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a8f40f73b018082b7cb65cf1",
+      "revision": "4ecce5c95e0de9de",
+      "recipient": "ou_bob",
+      "kind": "daily",
+      "delivery": "scheduled",
+      "allow_interrupt": true,
+      "card": {
+        "config": {
+          "wide_screen_mode": true
+        },
+        "header": {
+          "template": "blue",
+          "title": {
+            "tag": "plain_text",
+            "content": "请确认个人日报"
+          }
+        },
+        "elements": [
+          {
+            "tag": "div",
+            "text": {
+              "tag": "plain_text",
+              "content": "小李（2026-11-05 至 2026-11-05）\n暂无进展记录，请补充或确认本期无进展。"
+            }
+          },
+          {
+            "tag": "note",
+            "elements": [
+              {
+                "tag": "plain_text",
+                "content": "只有本人可确认；需修改时先更新进展，再重新生成。"
+              }
+            ]
+          },
+          {
+            "tag": "action",
+            "actions": [
+              {
+                "tag": "button",
+                "type": "primary",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "确认"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "a8f40f73b018082b7cb65cf1",
+                  "revision": "4ecce5c95e0de9de"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "40136fd4578795c9d22128f7",
+      "revision": "474f464bf7f2b0b4",
+      "recipient": "ou_alice",
+      "kind": "weekly",
+      "delivery": "scheduled",
+      "allow_interrupt": false,
+      "card": {
+        "config": {
+          "wide_screen_mode": true
+        },
+        "header": {
+          "template": "blue",
+          "title": {
+            "tag": "plain_text",
+            "content": "请确认个人周报"
+          }
+        },
+        "elements": [
+          {
+            "tag": "div",
+            "text": {
+              "tag": "plain_text",
+              "content": "小王（2026-11-02 至 2026-11-06）\n- 2026-11-05｜AIPaaS 4.0｜recAPI｜完成接口联调（Codex）"
+            }
+          },
+          {
+            "tag": "note",
+            "elements": [
+              {
+                "tag": "plain_text",
+                "content": "只有本人可确认；需修改时先更新进展，再重新生成。"
+              }
+            ]
+          },
+          {
+            "tag": "action",
+            "actions": [
+              {
+                "tag": "button",
+                "type": "primary",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "确认"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "40136fd4578795c9d22128f7",
+                  "revision": "474f464bf7f2b0b4"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "d8134434bf523c8cde369540",
+      "revision": "8242d87314959992",
+      "recipient": "ou_bob",
+      "kind": "weekly",
+      "delivery": "scheduled",
+      "allow_interrupt": false,
+      "card": {
+        "config": {
+          "wide_screen_mode": true
+        },
+        "header": {
+          "template": "blue",
+          "title": {
+            "tag": "plain_text",
+            "content": "请确认个人周报"
+          }
+        },
+        "elements": [
+          {
+            "tag": "div",
+            "text": {
+              "tag": "plain_text",
+              "content": "小李（2026-11-02 至 2026-11-06）\n- 2026-11-06｜AICloud Labs｜recLabs｜推进评测接入（群）；待复核；风险：测试环境阻塞"
+            }
+          },
+          {
+            "tag": "note",
+            "elements": [
+              {
+                "tag": "plain_text",
+                "content": "只有本人可确认；需修改时先更新进展，再重新生成。"
+              }
+            ]
+          },
+          {
+            "tag": "action",
+            "actions": [
+              {
+                "tag": "button",
+                "type": "primary",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "确认"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "d8134434bf523c8cde369540",
+                  "revision": "8242d87314959992"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "manager": {
+    "period": "2026-11-02/2026-11-06",
+    "missing": [
+      "小王",
+      "小李"
+    ],
+    "risks": [
+      "小李｜recLabs：测试环境阻塞"
+    ],
+    "body": "跨人周报（2026-11-02 至 2026-11-06）\n缺报/未确认：小王、小李\n风险：\n小李｜recLabs：测试环境阻塞\n\n小王（2026-11-02 至 2026-11-06）\n- 2026-11-05｜AIPaaS 4.0｜recAPI｜完成接口联调（Codex）\n\n小李（2026-11-02 至 2026-11-06）\n- 2026-11-06｜AICloud Labs｜recLabs｜推进评测接入（群）；待复核；风险：测试环境阻塞"
+  }
+}

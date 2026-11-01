@@ -34,5 +34,6 @@ def to_incoming(data: Any) -> IncomingMessage:
         root_id=_g(msg, "root_id"),
         parent_id=_g(msg, "parent_id"),
         thread_id=_g(msg, "thread_id"),
+        sender_type=_g(data, "event", "sender", "sender_type", default="user"),
         create_time_ms=int(_g(msg, "create_time") or 0),
     )

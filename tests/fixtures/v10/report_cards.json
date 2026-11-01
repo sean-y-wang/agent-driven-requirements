@@ -1,0 +1,393 @@
+{
+  "confirmations": [
+    {
+      "id": "6b083615914955ed81100ad5",
+      "revision": "<revision>",
+      "recipient": "ou_alice",
+      "kind": "daily",
+      "delivery": "scheduled",
+      "allow_interrupt": true,
+      "card": {
+        "config": {
+          "wide_screen_mode": true
+        },
+        "header": {
+          "template": "blue",
+          "title": {
+            "tag": "plain_text",
+            "content": "请确认个人日报"
+          }
+        },
+        "elements": [
+          {
+            "tag": "div",
+            "text": {
+              "tag": "plain_text",
+              "content": "小王（2026-11-05 至 2026-11-05）\n- 2026-11-05｜AIPaaS 4.0｜recAPI｜完成接口联调（Codex）"
+            }
+          },
+          {
+            "tag": "note",
+            "elements": [
+              {
+                "tag": "plain_text",
+                "content": "一次只处理本份汇报。可整单确认、改摘要或作废；逐条修改/无编码手填请在 Personal Agent 中继续。"
+              }
+            ]
+          },
+          {
+            "tag": "action",
+            "actions": [
+              {
+                "tag": "button",
+                "type": "primary",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "整单确认"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "6b083615914955ed81100ad5",
+                  "revision": "<revision>",
+                  "action": "confirm"
+                }
+              },
+              {
+                "tag": "button",
+                "type": "default",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "改摘要"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "6b083615914955ed81100ad5",
+                  "revision": "<revision>",
+                  "action": "edit"
+                }
+              },
+              {
+                "tag": "button",
+                "type": "danger",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "作废"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "6b083615914955ed81100ad5",
+                  "revision": "<revision>",
+                  "action": "void"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "items": [
+        {
+          "agent": "Codex",
+          "author": "ou_alice",
+          "day": "2026-11-05",
+          "module": "AIPaaS 4.0",
+          "record_id": "",
+          "review": false,
+          "risk": "",
+          "summary": "完成接口联调",
+          "task": "recAPI"
+        }
+      ],
+      "empty": false,
+      "manual_action": "progress.submit",
+      "status": "pending"
+    },
+    {
+      "id": "a8f40f73b018082b7cb65cf1",
+      "revision": "<revision>",
+      "recipient": "ou_bob",
+      "kind": "daily",
+      "delivery": "scheduled",
+      "allow_interrupt": true,
+      "card": {
+        "config": {
+          "wide_screen_mode": true
+        },
+        "header": {
+          "template": "blue",
+          "title": {
+            "tag": "plain_text",
+            "content": "请确认个人日报"
+          }
+        },
+        "elements": [
+          {
+            "tag": "div",
+            "text": {
+              "tag": "plain_text",
+              "content": "小李（2026-11-05 至 2026-11-05）\n无编码/请手填：可提交进展、填写非编码工作，或确认本期无进展。"
+            }
+          },
+          {
+            "tag": "note",
+            "elements": [
+              {
+                "tag": "plain_text",
+                "content": "一次只处理本份汇报。可整单确认、改摘要或作废；逐条修改/无编码手填请在 Personal Agent 中继续。"
+              }
+            ]
+          },
+          {
+            "tag": "action",
+            "actions": [
+              {
+                "tag": "button",
+                "type": "primary",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "整单确认"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "a8f40f73b018082b7cb65cf1",
+                  "revision": "<revision>",
+                  "action": "confirm"
+                }
+              },
+              {
+                "tag": "button",
+                "type": "default",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "改摘要"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "a8f40f73b018082b7cb65cf1",
+                  "revision": "<revision>",
+                  "action": "edit"
+                }
+              },
+              {
+                "tag": "button",
+                "type": "danger",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "作废"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "a8f40f73b018082b7cb65cf1",
+                  "revision": "<revision>",
+                  "action": "void"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "items": [],
+      "empty": true,
+      "manual_action": "progress.submit",
+      "status": "pending"
+    },
+    {
+      "id": "40136fd4578795c9d22128f7",
+      "revision": "<revision>",
+      "recipient": "ou_alice",
+      "kind": "weekly",
+      "delivery": "scheduled",
+      "allow_interrupt": false,
+      "card": {
+        "config": {
+          "wide_screen_mode": true
+        },
+        "header": {
+          "template": "blue",
+          "title": {
+            "tag": "plain_text",
+            "content": "请确认个人周报"
+          }
+        },
+        "elements": [
+          {
+            "tag": "div",
+            "text": {
+              "tag": "plain_text",
+              "content": "小王（2026-11-02 至 2026-11-06）\n- 2026-11-05｜AIPaaS 4.0｜recAPI｜完成接口联调（Codex）"
+            }
+          },
+          {
+            "tag": "note",
+            "elements": [
+              {
+                "tag": "plain_text",
+                "content": "一次只处理本份汇报。可整单确认、改摘要或作废；逐条修改/无编码手填请在 Personal Agent 中继续。"
+              }
+            ]
+          },
+          {
+            "tag": "action",
+            "actions": [
+              {
+                "tag": "button",
+                "type": "primary",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "整单确认"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "40136fd4578795c9d22128f7",
+                  "revision": "<revision>",
+                  "action": "confirm"
+                }
+              },
+              {
+                "tag": "button",
+                "type": "default",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "改摘要"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "40136fd4578795c9d22128f7",
+                  "revision": "<revision>",
+                  "action": "edit"
+                }
+              },
+              {
+                "tag": "button",
+                "type": "danger",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "作废"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "40136fd4578795c9d22128f7",
+                  "revision": "<revision>",
+                  "action": "void"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "items": [
+        {
+          "agent": "Codex",
+          "author": "ou_alice",
+          "day": "2026-11-05",
+          "module": "AIPaaS 4.0",
+          "record_id": "",
+          "review": false,
+          "risk": "",
+          "summary": "完成接口联调",
+          "task": "recAPI"
+        }
+      ],
+      "empty": false,
+      "manual_action": "progress.submit",
+      "status": "pending"
+    },
+    {
+      "id": "d8134434bf523c8cde369540",
+      "revision": "<revision>",
+      "recipient": "ou_bob",
+      "kind": "weekly",
+      "delivery": "scheduled",
+      "allow_interrupt": false,
+      "card": {
+        "config": {
+          "wide_screen_mode": true
+        },
+        "header": {
+          "template": "blue",
+          "title": {
+            "tag": "plain_text",
+            "content": "请确认个人周报"
+          }
+        },
+        "elements": [
+          {
+            "tag": "div",
+            "text": {
+              "tag": "plain_text",
+              "content": "小李（2026-11-02 至 2026-11-06）\n无编码/请手填：可提交进展、填写非编码工作，或确认本期无进展。"
+            }
+          },
+          {
+            "tag": "note",
+            "elements": [
+              {
+                "tag": "plain_text",
+                "content": "一次只处理本份汇报。可整单确认、改摘要或作废；逐条修改/无编码手填请在 Personal Agent 中继续。"
+              }
+            ]
+          },
+          {
+            "tag": "action",
+            "actions": [
+              {
+                "tag": "button",
+                "type": "primary",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "整单确认"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "d8134434bf523c8cde369540",
+                  "revision": "<revision>",
+                  "action": "confirm"
+                }
+              },
+              {
+                "tag": "button",
+                "type": "default",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "改摘要"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "d8134434bf523c8cde369540",
+                  "revision": "<revision>",
+                  "action": "edit"
+                }
+              },
+              {
+                "tag": "button",
+                "type": "danger",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "作废"
+                },
+                "value": {
+                  "kind": "report_confirm",
+                  "report_id": "d8134434bf523c8cde369540",
+                  "revision": "<revision>",
+                  "action": "void"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "items": [],
+      "empty": true,
+      "manual_action": "progress.submit",
+      "status": "pending"
+    }
+  ],
+  "manager": {
+    "period": "2026-11-02/2026-11-06",
+    "missing": [
+      "小王",
+      "小李"
+    ],
+    "risks": [],
+    "body": "跨人周报（2026-11-02 至 2026-11-06）\n缺报/未确认：小王、小李\n风险：\n无\n\n暂无已确认周报。"
+  }
+}

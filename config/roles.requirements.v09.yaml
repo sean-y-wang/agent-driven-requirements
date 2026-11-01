@@ -1,0 +1,279 @@
+# Extend the existing requirements scenario; table IDs are placeholders.
+version: 1
+scenario: requirements
+dedicated: true
+bot_name: 需求小助手
+react_on_mention: true
+react_emoji: Get
+query_docs_hint: 若需要查看更多记录，请自行打开需求多维表格检索。
+timezone: Asia/Shanghai
+llm:
+  default: qwen
+  fallback:
+  - deepseek
+  providers:
+    openai:
+      type: openai_compatible
+      base_url: https://api.openai.com/v1
+      api_key: ${OPENAI_API_KEY}
+      model: gpt-4o-mini
+      supports_json_schema: true
+    qwen:
+      type: openai_compatible
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key: ${DASHSCOPE_API_KEY}
+      model: qwen-plus
+      fallback_models:
+      - qwen-turbo
+    deepseek:
+      type: openai_compatible
+      base_url: https://api.deepseek.com
+      api_key: ${DEEPSEEK_API_KEY}
+      model: deepseek-chat
+    private:
+      type: openai_compatible
+      base_url: http://llm.example.internal:8000/v1
+      api_key: ${PRIVATE_LLM_KEY}
+      model: qwen2.5-72b-instruct
+session:
+  timeout_minutes: 15
+  max_followups: 2
+chats_allowlist: []
+audit_store_text: true
+p2p_enabled: true
+ack_after_seconds: 2
+first_guide_enabled: true
+first_guide_text: 我是需求小助手：提需求先确认；自动候选待分诊；群进展静默记录待复核；也可问我查进展。
+intent:
+  enabled: true
+  min_confidence: 0.6
+context:
+  enabled: true
+  recent_messages: 5
+  include_parent: true
+  include_thread: true
+  thread_messages: 20
+  max_chars: 3000
+remote_config:
+  enabled: false
+  app_token: ''
+  table_id: ''
+  refresh_seconds: 300
+roles:
+- command: /提需求
+  aliases:
+  - /需求
+  - /req
+  name: 需求小助手
+  description: 收集产品需求、功能建议、优化想法；也可查询已有需求进展
+  confirm_before_write: true
+  queryable: true
+  query:
+    search_fields:
+    - title
+    reply_fields:
+    - title
+    - status
+    - priority
+    - proposer
+    - due
+    max_candidates: 20
+    max_reply: 2
+    fallback_limit: 30
+  min_content_chars: 12
+  system_prompt: '你是「需求小助手」，帮产品收集需求。优先抽出：标题、背景/描述、所属项目、优先级、期望上线。
+
+    可结合聊天上下文（前文几句）理解并提炼，但不要编造用户没提过的事实。
+
+    用户若在闲聊或只说「记一下」而无实质内容，对应字段填 null 并放入 missing。
+
+    '
+  guide_prompt: '想提需求的话，请尽量说清这几项（可一条消息写完）：
+
+    1）标题（一句话） 2）背景/要解决什么 3）优先级（P0–P3） 4）期望上线日期
+
+    例：@我 SparkAudio API 要支持流式返回，给开放平台用，P1，期望下月中
+
+    '
+  reply_style: 简洁、条目化，少客套
+  receipt_title: 已写入需求小助手
+tables:
+  requirements:
+    app_token: ${REQUIREMENTS_APP_TOKEN:-bascnEXAMPLE}
+    table_id: ${REQUIREMENTS_TABLE_ID:-tblREQUIREMENTS}
+    fields:
+    - key: title
+      field: 需求标题
+      type: text
+      required: true
+      max_len: 100
+      description: 一句话概括需求
+    - key: desc
+      field: 需求描述
+      type: text
+      required: false
+      description: 需求的详细背景和内容（可综合聊天上下文）
+    - key: project
+      field: 所属模块
+      type: single_select
+      default: null
+      options:
+      - value: AIPaaS 4.0
+      - value: AICloud Labs
+    - key: type
+      field: 需求类型
+      type: single_select
+      default: 新功能
+      options:
+      - value: 新功能
+      - value: 优化
+        synonyms:
+        - 改进
+        - 体验
+      - value: 缺陷
+        synonyms:
+        - bug
+        - 问题
+        - 报错
+      - value: 技术债
+        synonyms:
+        - 重构
+    - key: priority
+      field: 优先级
+      type: single_select
+      default: P2
+      options:
+      - value: P0
+        synonyms:
+        - 紧急
+        - 最高
+      - value: P1
+        synonyms:
+        - 高
+      - value: P2
+        synonyms:
+        - 中
+      - value: P3
+        synonyms:
+        - 低
+    - key: due
+      field: 期望上线日期
+      type: date
+      required: false
+    - key: proposer
+      field: 提出人
+      type: text
+      required: false
+      default: $sender_name
+      description: 提出需求的人；没明确提到其他人就留空
+    - &id001
+      key: status
+      field: 状态
+      type: single_select
+      default: 待评审
+      options:
+      - value: 待分诊
+      - value: 待评审
+      - value: 进行中
+      - value: 阻塞
+      - value: 已完成
+      - value: 已关闭
+    - key: source
+      field: 来源群
+      type: text
+      default: $chat_name
+    - key: raw_text
+      field: 原始消息
+      type: text
+      default: $raw_text
+    - key: context
+      field: 上下文摘录
+      type: text
+      default: $context
+    - key: message_link
+      field: 消息链接
+      type: url
+      default: $message_link
+    - key: submitted_at
+      field: 提交时间
+      type: date
+      default: $now
+    - &id004
+      key: review
+      field: 复核标记
+      type: checkbox
+      default: false
+    - &id003
+      key: agent
+      field: 来源智能体
+      type: single_select
+      options:
+      - value: Claude Code
+      - value: Codex
+      - value: Orca
+      - value: 群
+      - value: 其他
+  tasks:
+    app_token: ${REQUIREMENTS_APP_TOKEN:-bascnEXAMPLE}
+    table_id: ${TASKS_TABLE_ID:-tblTASKS}
+    fields:
+    - key: title
+      field: 任务标题
+      type: text
+    - key: requirement
+      field: 需求记录标识
+      type: text
+    - &id002
+      key: module
+      field: 所属模块
+      type: single_select
+      options:
+      - value: AIPaaS 4.0
+      - value: AICloud Labs
+    - key: participants
+      field: 参与人
+      type: user
+    - *id001
+  progress:
+    app_token: ${REQUIREMENTS_APP_TOKEN:-bascnEXAMPLE}
+    table_id: ${PROGRESS_TABLE_ID:-tblPROGRESS}
+    fields:
+    - key: task
+      field: 任务记录标识
+      type: text
+    - *id002
+    - key: author
+      field: 记录人
+      type: user
+    - key: day
+      field: 日期
+      type: text
+    - key: summary
+      field: 进展摘要
+      type: text
+    - *id003
+    - *id004
+    - key: sync_key
+      field: 同步键
+      type: text
+    - key: risk
+      field: 风险
+      type: text
+    - key: source_message
+      field: 来源消息标识
+      type: text
+  modules:
+    app_token: ${REQUIREMENTS_APP_TOKEN:-bascnEXAMPLE}
+    table_id: ${MODULES_TABLE_ID:-tblMODULES}
+    fields:
+    - *id002
+    - key: project
+      field: 项目名称
+      type: text
+    - key: repository
+      field: 仓库地址
+      type: text
+intake:
+  observe_groups: false
+  all_messages_permission: false
+  observed_chats: []

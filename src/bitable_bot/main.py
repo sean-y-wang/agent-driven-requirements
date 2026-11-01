@@ -15,6 +15,7 @@ from .extractor import Extractor
 from .logging_setup import add_log_hook, setup_logging
 from .providers.openai_compat import build_providers
 from .query import QueryService
+from .requirements_v09.reports import ReportStore
 from .service import BotService
 from .session import Store
 from .writer import BitableWriter, LarkFeishuAPI
@@ -59,6 +60,7 @@ class Settings:
         self.open_domain, self.web_domain, self.applink_host = DOMAINS[domain]
         self.config_path = resolve_config_path(env)
         self.db_path = env.get("BOT_DB_PATH", "data/bot.db")
+        self.report_db_path = env.get("REPORT_DB_PATH", "data/reports.db")
         self.bot_open_id = env.get("FEISHU_BOT_OPEN_ID") or None
         self.log_level = env.get("LOG_LEVEL", "INFO")
         self.workers = int(env.get("BOT_WORKERS", "4"))
@@ -79,6 +81,14 @@ def build_service(settings: Settings, cfg, lark_client) -> BotService:
     store = Store(settings.db_path)
     api = LarkFeishuAPI(lark_client)
     cfg = apply_remote_config(cfg, api)
+    if cfg.intake.observe_groups:
+        for chat_id in cfg.intake.observed_chats:
+            try:
+                api.list_messages("chat", chat_id, 1)
+            except Exception as e:
+                raise ConfigError(
+                    "群消息读取预检失败：请管理员开通群全部消息可读权限、发布应用并确认机器人在目标群中。"
+                ) from e
     providers = build_providers(cfg)
     bot_id = resolve_bot_open_id(api, settings.bot_open_id)
     collector = ContextCollector(api, cfg, applink_host=settings.applink_host, bot_open_id=bot_id)
@@ -93,6 +103,7 @@ def build_service(settings: Settings, cfg, lark_client) -> BotService:
         bot_open_id=bot_id,
         collector=collector,
         query_service=qsvc,
+        report_store=ReportStore(settings.report_db_path) if cfg.tables else None,
     )
 
 

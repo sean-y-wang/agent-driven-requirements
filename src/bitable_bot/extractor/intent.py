@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 
 import structlog
@@ -123,17 +124,29 @@ def classify(provider: LLMProvider, cfg: AppConfig, roles: list[Role], text: str
     if context:
         user += "聊天上下文：\n" + _wrap(context) + "\n"
     user += "当前消息：\n" + _wrap(text)
+    system = SYSTEM.format(roles=describe_roles(roles))
+    schema = INTENT_SCHEMA
+    if cfg.tables:
+        schema = deepcopy(INTENT_SCHEMA)
+        schema["properties"]["action"]["enum"] += ["candidate", "progress"]
+        system += """
+0.9 补充：action 还可为 candidate 或 progress。
+record 仅限明确要求提需/登记的消息；candidate 为没有明确提需指令、但包含具体问题或改进建议的自动候选。
+progress 为陈述已做/正在做/阻塞的群进展，查询问句仍是 query；闲聊仍是 help。
+不得把普通讨论或不确定推测当成需求；不确定时 confidence 降低。"""
     msgs = [
-        {"role": "system", "content": SYSTEM.format(roles=describe_roles(roles))},
+        {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
     try:
-        obj = parse_json(provider.extract(msgs, INTENT_SCHEMA))
+        obj = parse_json(provider.extract(msgs, schema))
     except (LLMError, ValueError) as e:
         log.warning("intent.failed", error=str(e)[:200])
         return Intent(None, 0.0, f"error: {e}", action="")
     raw_action = obj.get("action")
-    action = raw_action if raw_action in ("record", "query", "help") else ("record" if obj.get("role") else "")
+    allowed = ("record", "query", "help", "candidate", "progress") if cfg.tables else ("record", "query", "help")
+    fallback = "record" if obj.get("role") and not cfg.tables else ""
+    action = raw_action if raw_action in allowed else fallback
     raw_role = obj.get("role")
     role = None
     if isinstance(raw_role, str) and raw_role.strip():
@@ -155,7 +168,7 @@ def classify(provider: LLMProvider, cfg: AppConfig, roles: list[Role], text: str
         kws = [str(x).strip() for x in raw_kw if str(x).strip()][:5]
     if action == "query":
         return Intent(role, conf, reason, action="query", query=qtext or text, keywords=kws)
-    return Intent(role, conf if role else 0.0, reason, action="record" if role else "")
+    return Intent(role, conf if role else 0.0, reason, action=action if role else "")
 
 
 def looks_like_query(text: str, hints: list[str]) -> bool:

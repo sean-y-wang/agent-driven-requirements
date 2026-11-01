@@ -34,6 +34,7 @@ class IncomingMessage:
     parent_id: str = ""
     thread_id: str = ""
     create_time_ms: int = 0
+    sender_type: str = "user"
 
 
 def extract_text(msg_type: str, content: str) -> str:
@@ -136,6 +137,8 @@ def help_text(cfg: AppConfig, chat_id: str | None = None) -> str:
         ]
         if cfg.query_docs_hint:
             lines.append(f"   （{cfg.query_docs_hint}）")
+        if cfg.tables:
+            lines.append("0.9：自动候选进入待分诊并标记复核；群进展静默写入进展日志待复核，不找本人确认。")
         lines.append(f"也可用命令 {r.command} …；/取消 放弃未完成的记录；/help 查看本帮助。")
         return "\n".join(lines)
     lines = ["可用命令（@我 + 命令 + 内容）："]

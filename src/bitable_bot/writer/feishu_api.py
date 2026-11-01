@@ -15,6 +15,10 @@ class FeishuAPIError(Exception):
 
 
 class FeishuAPI(Protocol):
+    def list_all_records(self, app_token: str, table_id: str) -> list[dict[str, Any]]: ...
+
+    def update_record(self, app_token: str, table_id: str, record_id: str, fields: dict[str, Any]) -> None: ...
+
     def create_record(self, app_token: str, table_id: str, fields: dict[str, Any], client_token: str) -> str: ...
 
     def reply_text(self, message_id: str, text: str, in_thread: bool = False) -> str: ...
@@ -72,6 +76,29 @@ class LarkFeishuAPI:
         resp = self.client.bitable.v1.app_table_record.create(req)
         self._check(resp)
         return resp.data.record.record_id
+
+    def update_record(self, app_token: str, table_id: str, record_id: str, fields: dict[str, Any]) -> None:
+        from lark_oapi.api.bitable.v1 import AppTableRecord, UpdateAppTableRecordRequest
+
+        req = (UpdateAppTableRecordRequest.builder().app_token(app_token).table_id(table_id)
+               .record_id(record_id).user_id_type("open_id")
+               .request_body(AppTableRecord.builder().fields(fields).build()).build())
+        self._check(self.client.bitable.v1.app_table_record.update(req))
+
+    def list_all_records(self, app_token: str, table_id: str) -> list[dict[str, Any]]:
+        rows, seen, cursor = [], set(), ""
+        while True:
+            queries = [("page_size", "100"), ("user_id_type", "open_id")]
+            if cursor:
+                queries.append(("page_token", cursor))
+            data = self._get_json(f"/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records", queries)
+            rows.extend(data.get("items") or [])
+            if not data.get("has_more"):
+                return rows
+            cursor = data.get("page_token")
+            if not cursor or cursor in seen:
+                raise FeishuAPIError(-1, "飞书分页不完整，已停止读取")
+            seen.add(cursor)
 
     def reply_text(self, message_id: str, text: str, in_thread: bool = False) -> str:
         return self._reply(message_id, "text", {"text": text}, in_thread)

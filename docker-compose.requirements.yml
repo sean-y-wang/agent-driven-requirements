@@ -1,0 +1,10 @@
+# Use with: docker compose -f docker-compose.yml -f docker-compose.requirements.yml ...
+# Keep the installed PA package and fixture available for an offline container smoke test.
+services:
+  bot:
+    environment:
+      BOT_CONFIG: /app/config/roles.requirements.v09.yaml
+      REPORT_DB_PATH: /data/reports.db
+      PROGRESS_LOCK_DIR: /data/progress-locks
+    volumes:
+      - ./tests/fixtures/v10:/app/fixtures/v10:ro

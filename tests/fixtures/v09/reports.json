@@ -1,0 +1,7 @@
+{
+  "members": [{"open_id": "ou_alice", "name": "小王"}, {"open_id": "ou_bob", "name": "小李"}],
+  "progress": [
+    {"author": "ou_alice", "day": "2026-11-05", "task": "recAPI", "module": "AIPaaS 4.0", "summary": "完成接口联调", "agent": "Codex"},
+    {"author": "ou_bob", "day": "2026-11-06", "task": "recLabs", "module": "AICloud Labs", "summary": "推进评测接入", "risk": "测试环境阻塞", "review": true, "agent": "群"}
+  ]
+}

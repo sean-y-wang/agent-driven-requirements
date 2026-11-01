@@ -14,6 +14,7 @@ import threading
 import time
 from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import structlog
 
@@ -24,6 +25,7 @@ from .extractor import ExtractionError, Extractor, build_messages, classify
 from .extractor.intent import looks_like_help, looks_like_query
 from .query import QueryService
 from .receipt import confirm_card, followup_text, preview_lines, query_card, success_card, success_text
+from .requirements_v09.writer import MultiTableWriter
 from .router import IncomingMessage, Kind, bot_mentioned, clean_text, extract_text, help_text, route
 from .session import Session, Store
 from .validator import Context, validate
@@ -93,6 +95,7 @@ class BotService:
         clock=time.time,
         collector: ContextCollector | None = None,
         query_service: QueryService | None = None,
+        report_store=None,
     ) -> None:
         self.cfg = cfg
         self.api = api
@@ -103,6 +106,7 @@ class BotService:
         self.clock = clock
         self.collector = collector or ContextCollector(api, cfg, bot_open_id=bot_open_id, clock=clock)
         self.query = query_service
+        self.report_store = report_store
 
     # ------------------------------------------------------------------ entry
     def is_duplicate(self, msg: IncomingMessage) -> bool:
@@ -134,6 +138,8 @@ class BotService:
             self._reply(msg.message_id, self.cfg.first_guide_text)
 
     def _handle(self, msg: IncomingMessage) -> None:
+        if msg.sender_type != "user":
+            return
         if self.is_duplicate(msg):
             log.info("dedup.skip", event_id=msg.event_id, message_id=msg.message_id)
             return
@@ -145,6 +151,13 @@ class BotService:
         thread_s = self._thread_session(msg, sessions)
         addressed = p2p or bot_mentioned(msg.mentions, raw, self.bot_open_id)
         if not addressed and thread_s is None:
+            if (self.cfg.tables and self.cfg.intake.observe_groups and msg.chat_type == "group"
+                    and msg.chat_id in self.cfg.intake.observed_chats
+                    and (not self.cfg.chats_allowlist or msg.chat_id in self.cfg.chats_allowlist)
+                    and msg.message_type in ("text", "post") and msg.sender_open_id
+                    and msg.sender_open_id != self.bot_open_id):
+                text, people = clean_text(raw, msg.mentions, self.bot_open_id, strip_leading=False)
+                self._detect(msg, text, people, passive=True)
             return
         if msg.message_type not in ("text", "post"):
             self._reply(msg.message_id, "暂只支持文字消息。发送 /help 查看用法。")
@@ -176,6 +189,12 @@ class BotService:
             self._start(msg, r.role, r.body, people, raw_text=text)
         else:
             s = thread_s or (sessions[0] if sessions else None)
+            if self.cfg.tables and s and not thread_s and msg.chat_type == "group":
+                role = self.cfg.find_role(s.role)
+                # A fresh group message must not become an edit of an unrelated pending draft.
+                if role and not (is_yes(text) or is_cancel(text) or is_skip(text) or parse_edits(role, text)):
+                    self._detect(msg, text, people)
+                    return
             if s is None:
                 self._maybe_first_guide(msg)
                 self._detect(msg, text, people)
@@ -195,20 +214,26 @@ class BotService:
             return False
         return not role.allowed_users or msg.sender_open_id in role.allowed_users
 
-    def _detect(self, msg: IncomingMessage, text: str, people: dict[str, str]) -> None:
+    def _detect(self, msg: IncomingMessage, text: str, people: dict[str, str], passive: bool = False) -> None:
         if not self.cfg.intent.enabled:
+            if passive:
+                return
             self._reply(msg.message_id, "请使用命令开头，例如：\n" + help_text(self.cfg, msg.chat_id))
             return
         roles = [r for r in self.cfg.roles if self._permitted(msg, r)]
         if not roles:
+            if passive:
+                return
             self._reply(msg.message_id, "抱歉，你在这里没有可用的记录角色。")
             return
         # Dedicated single-role bot (e.g. 需求小助手): fixed role, only record|query.
         dedicated_role = self.cfg.primary_role() if self.cfg.dedicated else None
         if dedicated_role is not None and dedicated_role in roles:
             roles = [dedicated_role]
-        conv = self.collector.collect(msg)
+        conv = ConversationContext() if passive else self.collector.collect(msg)
         if not text and not conv.excerpt:
+            if passive:
+                return
             # try single queryable/record role guide, else help
             if len(roles) == 1:
                 self._reply(msg.message_id, _auto_guide(roles[0]))
@@ -217,6 +242,24 @@ class BotService:
             return
         provider = self.extractor.resolve(self.cfg.intent.llm)
         intent = classify(provider, self.cfg, roles, text, conv.excerpt)
+        if self.cfg.tables:
+            # No optimistic record fallback when classification fails in 0.9.
+            if intent.confidence < self.cfg.intent.min_confidence or not intent.action:
+                if not passive:
+                    self._reply(msg.message_id, help_text(self.cfg, msg.chat_id))
+                return
+            role = dedicated_role or intent.role
+            if role and intent.action == "progress":
+                if msg.chat_type == "group":
+                    self._group_progress(msg, text, role)
+                elif not passive:
+                    self._reply(msg.message_id, "个人研发进展请使用本机 progress-sync；也可查询需求或明确提需。")
+                return
+            if role and intent.action == "candidate":
+                self._start(msg, role, text, people, raw_text=text, conv=conv, intake="candidate")
+                return
+            if passive and intent.action != "record":
+                return
         # Force the dedicated role onto the intent when present (except help/chitchat).
         # Keep LLM confidence as-is for record/query so low-confidence can fall back to guide.
         if dedicated_role is not None:
@@ -282,6 +325,26 @@ class BotService:
             expires_at=self.clock() + self.cfg.session.timeout_minutes * 60,
         )
         self._ask_pick(msg.message_id, s, roles, intent.role, for_query=(intent.action == "query"))
+
+    def _group_progress(self, msg: IncomingMessage, text: str, role: Role) -> None:
+        if not self._permitted(msg, role):
+            return
+        values = {
+            "summary": text[:1000], "author": [{"id": msg.sender_open_id}],
+            "day": datetime.fromtimestamp(self.clock(), ZoneInfo(self.cfg.timezone)).date().isoformat(),
+            "agent": "群", "review": True, "sync_key": f"group:{msg.message_id}",
+            "source_message": msg.message_id,
+            "risk": text[:300] if any(word in text for word in ("阻塞", "风险", "延期", "卡住")) else "",
+        }
+        for key, value in self.cfg.resolve_chat_bindings(msg.chat_id, role):
+            if key == "project":
+                values["module"] = value
+        try:
+            wr = MultiTableWriter(self.writer, self.cfg.tables).write("progress", values, msg.message_id)
+            self.store.audit(chat_id=msg.chat_id, sender=msg.sender_open_id,
+                             command="progress", fields=values, record_id=wr.record_id, result="progress:review")
+        except WriteError as e:
+            self._reply(msg.message_id, e.user_message)
 
     def _handle_query_intent(self, msg, intent, roles, text, people, conv) -> None:
         qroles = [r for r in roles if r.queryable]
@@ -447,18 +510,21 @@ class BotService:
         raw_text: str,
         conv: ConversationContext | None = None,
         source_id: str | None = None,
+        intake: str = "record",
     ) -> None:
         source_id = source_id or msg.message_id
         if not self._permitted(msg, role):
             self._reply(source_id, f"抱歉，你在这里没有使用「{role.name}」的权限。")
             return
-        existing = self.store.get_record(source_id)
+        lookup_key = MultiTableWriter(self.writer, self.cfg.tables).key("requirements", source_id) if self.cfg.tables else source_id
+        existing = self.store.get_record(lookup_key)
         if existing:
-            self._reply_duplicate(source_id, role, existing[1])
+            if intake != "candidate":
+                self._reply_duplicate(source_id, role, existing[1])
             return
         if conv is None:
             conv = self.collector.collect(msg)
-        if role.min_content_chars > 0 and _is_thin(body, conv.excerpt, role.min_content_chars):
+        if intake != "candidate" and role.min_content_chars > 0 and _is_thin(body, conv.excerpt, role.min_content_chars):
             tip = help_text(self.cfg, msg.chat_id) if self.cfg.dedicated else _auto_guide(role)
             self._reply(source_id, tip)
             return
@@ -467,7 +533,7 @@ class BotService:
             self._reply(source_id, f"请在命令后附上内容，例如：{role.command} ……（需要包含：{req}）")
             return
         for old in self.store.sessions_for(msg.chat_id, msg.sender_open_id):
-            if old.role in (role.command, PICK):
+            if intake != "candidate" and old.role in (role.command, PICK):
                 self.store.delete_session(old)
         s = Session(
             chat_id=msg.chat_id,
@@ -475,7 +541,7 @@ class BotService:
             role=role.command,
             source_message_id=source_id,
             text=body,
-            raw_fields={"__ctx__": conv.to_dict(), "__people__": people, "__raw__": raw_text},
+            raw_fields={"__ctx__": conv.to_dict(), "__people__": people, "__raw__": raw_text, "__intake__": intake, "__chat_type__": msg.chat_type},
         )
         self._process(msg, role, s, people)
 
@@ -556,6 +622,7 @@ class BotService:
         force_preview: bool = False,
     ) -> None:
         reply_to = s.source_message_id
+        candidate = self.cfg.tables is not None and s.raw_fields.get("__intake__") == "candidate"
         all_people = {**s.raw_fields.get("__people__", {}), **people}
         conv = ConversationContext.from_dict(s.raw_fields.get("__ctx__"))
         raw_text = s.raw_fields.get("__raw__", s.text)
@@ -589,7 +656,7 @@ class BotService:
             t0 = time.monotonic()
             done = threading.Event()
             ack_timer = None
-            if self.cfg.ack_after_seconds > 0:
+            if self.cfg.ack_after_seconds > 0 and not candidate:
 
                 def _ack():
                     if not done.is_set():
@@ -605,6 +672,8 @@ class BotService:
                 self.store.audit(**audit, latency_ms=int((time.monotonic() - t0) * 1000), result=f"llm_error:{e}"[:200])
                 if s.followups:
                     s.followups.pop()
+                if candidate:
+                    return
                 self._reply(reply_to, "AI 字段提取暂时失败，请稍后在此话题中回复重试，或 /取消。", thread=True)
                 return
             finally:
@@ -621,11 +690,25 @@ class BotService:
             ext_fields[key] = val
             log.info("chat_binding.apply", chat_id=msg.chat_id, field_key=key, value=val)
 
+        if self.cfg.tables:
+            ext_fields.update(status="待分诊" if candidate else "待评审", review=bool(candidate),
+                              agent="群" if s.raw_fields.get("__chat_type__", msg.chat_type) == "group" else "其他")
         result = validate(role.fields, ext_fields, ctx)
+        if candidate:
+            if not result.complete:
+                self.store.audit(**audit, fields=result.values, result="candidate:incomplete")
+                return
+            try:
+                wr = MultiTableWriter(self.writer, self.cfg.tables).write("requirements", result.values, s.source_message_id)
+                self.store.audit(**audit, fields=result.values, record_id=wr.record_id, result="candidate:ok")
+            except WriteError as e:
+                self.store.audit(**audit, result=f"candidate:write_error:{e.code}")
+                self._reply(reply_to, e.user_message)
+            return
 
         if result.complete or (s.raw_fields.get("__skipped_optional__") and not result.missing):
             # confirm-before-write
-            need_confirm = role.confirm_before_write and not s.raw_fields.get("__confirmed__")
+            need_confirm = (role.confirm_before_write or self.cfg.tables is not None) and not s.raw_fields.get("__confirmed__")
             if need_confirm or force_preview:
                 self._ask_confirm(reply_to, role, s, result.values, all_people, ctx.tz, audit)
                 return
@@ -664,6 +747,7 @@ class BotService:
             and not (isinstance(f.default, str) and f.default.startswith("$"))
         ]
         s.raw_fields = {
+            **{k: v for k, v in s.raw_fields.items() if k.startswith("__")},
             **{k: v for k, v in ext_fields.items()},
             **{k: result.values[k] for k in result.values},
             "__people__": all_people,
@@ -738,7 +822,10 @@ class BotService:
 
     def _do_write(self, msg, role, s, values, people, ctx, audit, reply_to) -> None:
         try:
-            wr = self.writer.write(role, values, s.source_message_id)
+            if self.cfg.tables:
+                wr = MultiTableWriter(self.writer, self.cfg.tables).write("requirements", values, s.source_message_id)
+            else:
+                wr = self.writer.write(role, values, s.source_message_id)
         except WriteError as e:
             self.store.delete_session(s)
             self.store.audit(**audit, fields=values, result=f"write_error:{e.code}")
@@ -833,6 +920,13 @@ class BotService:
         """
         action = (payload.get("action") or {}) if isinstance(payload, dict) else {}
         value = action.get("value") if isinstance(action, dict) else None
+        if isinstance(value, dict) and value.get("kind") == "report_confirm":
+            from .personal_agent.cards import handle_report_action
+
+            return handle_report_action(
+                self.report_store, payload,
+                datetime.fromtimestamp(self.clock(), ZoneInfo(self.cfg.timezone)).date(),
+            )
         if not isinstance(value, dict) or value.get("kind") != "confirm":
             return {"toast": {"type": "info", "content": "未知操作"}}
         op = value.get("action")
@@ -841,7 +935,7 @@ class BotService:
         role_cmd = str(value.get("role") or "")
         source = str(value.get("source") or "")
         operator = ((payload.get("operator") or {}) if isinstance(payload, dict) else {}).get("open_id") or ""
-        if operator and user_id and operator != user_id:
+        if not operator or not user_id or operator != user_id:
             return {"toast": {"type": "error", "content": "只有发起确认的人可以操作此卡片"}}
         s = self.store.get_session(chat_id, user_id, role_cmd)
         if s is None or s.source_message_id != source:
