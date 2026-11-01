@@ -1,0 +1,16 @@
+[Unit]
+Description=Agent-Driven Requirements report delivery (one-shot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/absolute/repo
+EnvironmentFile=/absolute/repo/private/report.env
+ExecStart=/absolute/repo/scripts/run_report_delivery.sh
+User=bot
+Group=bot
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

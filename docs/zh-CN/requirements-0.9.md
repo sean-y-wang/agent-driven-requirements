@@ -102,16 +102,16 @@ chat_field_bindings:
   --members /absolute/private/members.json --db data/reports.db
 ```
 
-输出 JSON outbox 含个人卡片、接收人、稳定 id/revision 与管理者汇总。**0.9 按 PLAN 交付调度接口，不自动注册 cron、不内置发送适配器。** 部署端每分钟调用可补偿错过整点；同一日反复运行会返回尚未确认的相同 outbox，发送适配器必须按 `(id, revision)` 去重，不能直接无条件循环发消息。适配器发送个人卡片后，原机器人负责回调确认。`--dry-run` 使用全新的内存草稿库，仅用于载荷演练；正常运行才读取实际确认状态。
+输出 JSON outbox 含个人卡片、接收人、稳定 id/revision 与管理者汇总。`requirements-reports` 仍只负责生成；**发送**请用 1.0 起提供的 `requirements-deliver`（内置去重账本与重试，见 [生产运维 SOP](requirements-ops.md)）。部署端每分钟调用可补偿错过整点；同一日反复运行会返回尚未确认的相同 outbox，发送按 `(id, revision, recipient)` 去重，不能无条件循环发消息。适配器发送个人卡片后，原机器人负责回调确认。`--dry-run` 使用全新的内存草稿库，仅用于载荷演练；正常运行才读取实际确认状态。
 
-mini 的 cron 示例（机器时区设 Asia/Shanghai，命令路径用绝对路径，认证从受保护运行环境注入）：
+mini 的 cron 示例（机器时区设 Asia/Shanghai；推荐直接跑投递脚本）：
 
 ```cron
-0 9 * * 1-5 /absolute/repo/.venv/bin/requirements-reports --config /absolute/private/roles.yaml --members /absolute/private/members.json --db /absolute/private/reports.db > /absolute/private/report-outbox.json
-0 18 * * 5 /absolute/repo/.venv/bin/requirements-reports --config /absolute/private/roles.yaml --members /absolute/private/members.json --db /absolute/private/reports.db > /absolute/private/report-outbox.json
+0 9 * * 1-5 . /absolute/repo/private/report.env && /absolute/repo/scripts/run_report_delivery.sh >> /absolute/repo/data/delivery.log 2>&1
+0 18 * * 5 . /absolute/repo/private/report.env && /absolute/repo/scripts/run_report_delivery.sh >> /absolute/repo/data/delivery.log 2>&1
 ```
 
-此示例只生成 outbox，需部署发送适配器消费；不会自行向任何人发送消息。草稿已确认后，重复生成不会覆盖原确认正文。
+仅生成 outbox 时仍可用 `requirements-reports ... > outbox.json`，再 `requirements-deliver --outbox outbox.json`。草稿已确认后，重复生成不会覆盖原确认正文。
 
 管理者 P0 输出：本期未确认周报的缺报名单（含有日志但未确认者）、显式风险和待复核项、**完整跨人周报正文**。正文保留全量日志及模块/任务/日期/来源，不按 top-N 截断；名单外有日志的人也保留。管理者聚合只读远端数据，不代本人写日志。大量正文超过卡片限制时，部署适配器需分消息或转文档，不得静默截断。
 
@@ -125,4 +125,4 @@ mini 的 cron 示例（机器时区设 Asia/Shanghai，命令路径用绝对路�
 
 验收脚本在临时 Git 仓库运行 skill map/sync dry-run，检查四表中文字段、包版本和中英 CHANGELOG，并执行周报调度 dry-run。无真实飞书依赖、不写业务表、不使用真实密钥。
 
-非目标：Amp/Grok、通用 A2A、每人独立机器人、GUI 建表与高级权限开通、OAuth 登录网页/刷新、原生 Agent hook 自动注册、真实定时发送适配器。上线前仍需管理员完成权限、任务/模块基础数据、本人 OAuth、事件投递与发送适配器联调；这些部署边界不以 mock 测试替代。
+非目标：Amp/Grok、通用 A2A、每人独立机器人、GUI 建表与高级权限开通、OAuth 登录网页/刷新、原生 Agent hook 自动注册。发送适配器与 cron/systemd 挂载见 1.0 [生产运维 SOP](requirements-ops.md)。上线前仍需管理员完成权限、任务/模块基础数据、本人 OAuth 与正式机挂载；这些部署边界不以 mock 测试替代。

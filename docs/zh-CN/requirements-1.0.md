@@ -1,6 +1,6 @@
 # Agent-Driven Requirements 1.0.0：组织侧确认与主动填报
 
-基于 `origin/feat/requirements-progress-0.9`。对应 [原始 PLAN](requirements-1.0-plan.md)、[0.9 四表配置与入池规则](requirements-0.9.md)、[English guide](../en/requirements-1.0.md)。保留需求小助手入池、三种本机 skill 静默进展和 Master 不写表；无需新增飞书表或列。
+基于 `origin/feat/requirements-progress-0.9`。对应 [原始 PLAN](requirements-1.0-plan.md)、[0.9 四表配置与入池规则](requirements-0.9.md)、[生产运维 SOP](requirements-ops.md)、[English guide](../en/requirements-1.0.md)。保留需求小助手入池、三种本机 skill 静默进展和 Master 不写表；无需新增飞书表或列。
 
 ## 安装与配置
 
@@ -112,7 +112,7 @@ personal-agent weekly.confirm --json '{"body":"本周完成确认入口接入与
 requirements-reports --config "$BOT_CONFIG" --members /private/members.json --db "$REPORT_DB_PATH"
 ```
 
-调度器输出 outbox，不自动发消息。宿主可以在打开确认会话时调用 `inbox`，或部署端按每分钟/工作日 09:00/周五 18:00 拉取；向用户展示/发送时按 `(id, revision)` 去重。周报 `allow_interrupt=false`，日报允许提醒。重复读取仍返回未处理稿，直到确认/作废。不要把个人 `inbox` 当作跨人管理者入口。
+调度器输出 outbox。内置发送适配器 `requirements-deliver`（或 `scripts/run_report_delivery.sh`）消费 outbox：按 `(id, revision, recipient)` 去重写入投递账本，向成员推送确认卡片，并向管理者投递周报（过长自动分片）。也可由宿主在打开确认会话时调用 `inbox`。部署端用 cron/systemd 挂载工作日 09:00 / 周五 18:00（见 [生产运维 SOP](requirements-ops.md)）。周报 `allow_interrupt=false`，日报允许提醒。重复调度不会对同一 revision 再发；未确认稿会一直出现在 outbox，直到确认/作废。不要把个人 `inbox` 当作跨人管理者入口。
 
 ### S6：部署与自测
 

@@ -42,7 +42,7 @@ Sources are `Claude Code`, `Codex`, `Orca`, or `其他` (default). Preserve the 
 
 Confirmation status is stored in the local `report_drafts` table, not in a new Feishu table. A false review checkbox on a progress row is not personal confirmation. This preserves the 0.9 four-table schema. Keep bot, scheduler and confirmation CLI on the same database and release version; back up the DB before migration and restore that backup when rolling back to 0.9.
 
-The scheduler emits an outbox and does not send messages itself. Hosts deduplicate display/delivery by `(id, revision)`; weekly prompts have `allow_interrupt=false`. Use `requirements-reports --config ... --members ... --db ...` for cross-person manager output. A personal inbox never includes cross-person manager content.
+The scheduler emits an outbox. Use built-in `requirements-deliver` (or `scripts/run_report_delivery.sh`) to send confirmation cards and manager digests with `(id, revision, recipient)` dedup and retries; see the [Chinese ops SOP](../zh-CN/requirements-ops.md). Weekly prompts have `allow_interrupt=false`. `requirements-reports` still generates outbox only. A personal inbox never includes cross-person manager content.
 
 ## Offline and container acceptance
 

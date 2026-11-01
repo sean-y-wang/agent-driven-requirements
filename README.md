@@ -2,7 +2,7 @@
 
 **Agent-driven requirements management & progress tracking** — Feishu/Lark organization bot + Bitable system of record + local progress-sync. The in-chat bot display name remains **需求小助手** (Requirements Assistant).
 
-**1.0.0:** organization-side personal confirmation & active progress/report APIs (owned tasks, dossiers, editable confirmations), shared skill deduplication, and confirmed-only manager reports. [Guide](docs/en/requirements-1.0.md) · [中文](docs/zh-CN/requirements-1.0.md). This is **not** a standalone Personal Agent product line.
+**1.0.0:** organization-side personal confirmation & active progress/report APIs (owned tasks, dossiers, editable confirmations), shared skill deduplication, confirmed-only manager reports, and built-in `requirements-deliver` send adapter. [Guide](docs/en/requirements-1.0.md) · [中文](docs/zh-CN/requirements-1.0.md) · [Ops SOP](docs/zh-CN/requirements-ops.md). This is **not** a standalone Personal Agent product line.
 
 **0.9.0:** [Requirements progress deployment guide (中文)](docs/zh-CN/requirements-0.9.md) · [Local progress-sync skill](skills/progress-sync/SKILL.md). Four tables and daily/weekly confirmation scaffolding.
 

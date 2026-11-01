@@ -1,0 +1,22 @@
+# Optional one-shot delivery sidecar. Example:
+#   docker compose -f docker-compose.yml -f docker-compose.requirements.yml \
+#     -f docker-compose.delivery.yml run --rm deliver
+# Prefer host cron/systemd for Asia/Shanghai wall-clock accuracy.
+services:
+  deliver:
+    image: agent-driven-requirements:latest
+    profiles: ["delivery"]
+    env_file: .env
+    environment:
+      BOT_CONFIG: /app/config/roles.requirements.v09.yaml
+      REPORT_DB_PATH: /data/reports.db
+      REPORT_MEMBERS: /private/members.json
+      REPORT_MANAGER_RECIPIENTS: /private/managers.json
+      REPORT_DRY_RUN: ${REPORT_DRY_RUN:-0}
+    volumes:
+      - bot-data:/data
+      - ./config:/app/config:ro
+      - ./private:/private:ro
+      - ./scripts/run_report_delivery.sh:/app/scripts/run_report_delivery.sh:ro
+    entrypoint: ["/bin/bash", "/app/scripts/run_report_delivery.sh"]
+    restart: "no"

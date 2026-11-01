@@ -1,0 +1,10 @@
+# Agent-Driven Requirements — report delivery (host TZ must be Asia/Shanghai)
+# Install: crontab -e  and paste; replace /absolute/repo and ensure env file is sourced.
+SHELL=/bin/bash
+PATH=/usr/bin:/bin
+# Load credentials (FEISHU_APP_ID/SECRET, FEISHU_USER_ACCESS_TOKEN, BOT_CONFIG, …)
+# Prefer a root-readable env file, not world-readable.
+0 9 * * 1-5 . /absolute/repo/private/report.env && /absolute/repo/scripts/run_report_delivery.sh >> /absolute/repo/data/delivery.log 2>&1
+0 18 * * 5 . /absolute/repo/private/report.env && /absolute/repo/scripts/run_report_delivery.sh >> /absolute/repo/data/delivery.log 2>&1
+# Optional catch-up every weekday morning minute (dedup prevents re-send)
+# 1-59 9 * * 1-5 . /absolute/repo/private/report.env && /absolute/repo/scripts/run_report_delivery.sh >> /absolute/repo/data/delivery.log 2>&1
