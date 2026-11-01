@@ -4,6 +4,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added
+- Built-in report **send adapter** `requirements-deliver`: consumes outbox, deduplicates by `(id, revision, recipient)`, retries transient Feishu failures, chunks long manager digests, optional dry-run. Cron/systemd/compose helpers under `deploy/` and `scripts/run_report_delivery.sh`. Production SOP: `docs/zh-CN/requirements-ops.md`.
+
 ### Changed
 - Project product name is now **Agent-Driven Requirements**; GitHub repository renamed to `sean-y-wang/agent-driven-requirements`. Feishu bot display name remains 需求小助手. The installable Python package remains `feishu-bitable-bot` (import `bitable_bot`) for compatibility.
 - Product boundary: continue requirements management & progress tracking only; do **not** pull through a standalone Personal Agent product. 1.0 confirmation / active fill APIs are organization-bot personal confirmation capabilities.
@@ -23,7 +26,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Keep user edits and void states across scheduler refresh; invalidate old revisions even when text is edited back to an earlier value.
 
 ### Deployment
-- No additional Feishu tables/columns. Confirmation status remains in the shared local report database. Hosts consume/deduplicate the outbox; no unsolicited delivery or global Agent hooks.
+- No additional Feishu tables/columns. Confirmation status remains in the shared local report database. Built-in send adapter deduplicates delivery by `(id, revision)`; no global Agent hooks.
 - Offline acceptance and live box/WebSocket/tenant acceptance are reported separately. See [deployment guide](docs/en/requirements-1.0.md).
 
 ## [0.9.0] - 2026-11-01

@@ -2,7 +2,7 @@
 
 **Agent 驱动的需求管理与进展跟进** — 飞书组织侧机器人 + 多维表唯一数据源 + 本机 progress-sync。飞书里机器人外显名仍可为 **需求小助手**。
 
-**1.0.0：** 组织侧个人确认与主动填进展/日报/周报（我的任务、开工档案、改摘要/作废）、skill 去重、仅已确认进入管理者正文。[部署与 API](docs/zh-CN/requirements-1.0.md) · [原始 PLAN](docs/zh-CN/requirements-1.0-plan.md)。**不是**独立 Personal Agent 产品线。
+**1.0.0：** 组织侧个人确认与主动填进展/日报/周报（我的任务、开工档案、改摘要/作废）、skill 去重、仅已确认进入管理者正文、内置发送适配器 `requirements-deliver`。[部署与 API](docs/zh-CN/requirements-1.0.md) · [生产运维 SOP](docs/zh-CN/requirements-ops.md) · [原始 PLAN](docs/zh-CN/requirements-1.0-plan.md)。**不是**独立 Personal Agent 产品线。
 
 **0.9.0：** [需求收集与进展同步部署说明](docs/zh-CN/requirements-0.9.md) · [本机 progress-sync skill](skills/progress-sync/SKILL.md)。四表入池与日报/周报确认骨架。
 

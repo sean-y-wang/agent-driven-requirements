@@ -32,6 +32,7 @@ personal-agent = "bitable_bot.personal_agent.cli:main"
 bitable-bot = "bitable_bot.main:main"
 progress-sync = "bitable_bot.requirements_v09.progress:main"
 requirements-reports = "bitable_bot.requirements_v09.reports:main"
+requirements-deliver = "bitable_bot.requirements_v09.send_adapter:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bitable_bot"]

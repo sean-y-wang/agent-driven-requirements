@@ -4,6 +4,9 @@
 
 ## [未发布]
 
+### 新增
+- 内置汇报**发送适配器** `requirements-deliver`：消费 outbox，按 `(id, revision, recipient)` 去重，瞬时失败重试，管理者长文分片，支持 dry-run。挂载示例见 `deploy/` 与 `scripts/run_report_delivery.sh`。生产 SOP：`docs/zh-CN/requirements-ops.md`。
+
 ### 变更
 - 产品名定为 **Agent-Driven Requirements**；GitHub 仓库更名为 `sean-y-wang/agent-driven-requirements`。飞书机器人外显名仍可为「需求小助手」。可安装 Python 包名仍为 `feishu-bitable-bot`（import `bitable_bot`），属兼容遗留。
 - 产品边界：只做需求管理与进展跟进，**不**拉通独立 Personal Agent 产品。1.0 的确认/主动填报能力视为组织侧机器人的个人确认能力。
@@ -23,7 +26,7 @@
 - 用户修改与作废在调度刷新后保留；文本改回原文也不复活旧卡片，拒绝越权、过期、重复操作。
 
 ### 部署
-- 无新增飞书表/列，确认状态保留在共用本地汇报库；宿主消费 outbox 并去重，不自动发送或注册全局 Agent 钩子。
+- 无新增飞书表/列，确认状态保留在共用本地汇报库；发送适配器按 `(id, revision)` 去重投递；不注册全局 Agent 钩子。
 - 离线验收与 box/WS/租户实测分别记录，见 [部署说明](docs/zh-CN/requirements-1.0.md)。
 
 ## [0.9.0] - 2026-11-01

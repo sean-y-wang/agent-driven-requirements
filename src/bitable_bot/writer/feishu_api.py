@@ -25,6 +25,10 @@ class FeishuAPI(Protocol):
 
     def reply_card(self, message_id: str, card: dict[str, Any], in_thread: bool = False) -> str: ...
 
+    def send_card(self, receive_id: str, card: dict[str, Any], *, receive_id_type: str = "open_id") -> str: ...
+
+    def send_text(self, receive_id: str, text: str, *, receive_id_type: str = "open_id") -> str: ...
+
     def list_chat_members(self, chat_id: str) -> list[tuple[str, str]]: ...
 
     # ---- context / traceability (all optional: failures degrade gracefully) ----
@@ -122,6 +126,35 @@ class LarkFeishuAPI:
             .build()
         )
         resp = self.client.im.v1.message.reply(req)
+        self._check(resp)
+        return resp.data.message_id
+
+    def send_card(self, receive_id: str, card: dict[str, Any], *, receive_id_type: str = "open_id") -> str:
+        return self._send(receive_id, "interactive", card, receive_id_type=receive_id_type)
+
+    def send_text(self, receive_id: str, text: str, *, receive_id_type: str = "open_id") -> str:
+        return self._send(receive_id, "text", {"text": text}, receive_id_type=receive_id_type)
+
+    def _send(self, receive_id: str, msg_type: str, content: dict[str, Any], *, receive_id_type: str) -> str:
+        from lark_oapi.api.im.v1 import CreateMessageRequest, CreateMessageRequestBody
+
+        if receive_id_type not in ("open_id", "chat_id", "user_id", "email", "union_id"):
+            raise FeishuAPIError(-1, f"unsupported receive_id_type: {receive_id_type}")
+        if not receive_id:
+            raise FeishuAPIError(-1, "receive_id required")
+        req = (
+            CreateMessageRequest.builder()
+            .receive_id_type(receive_id_type)
+            .request_body(
+                CreateMessageRequestBody.builder()
+                .receive_id(receive_id)
+                .msg_type(msg_type)
+                .content(json.dumps(content, ensure_ascii=False))
+                .build()
+            )
+            .build()
+        )
+        resp = self.client.im.v1.message.create(req)
         self._check(resp)
         return resp.data.message_id
 

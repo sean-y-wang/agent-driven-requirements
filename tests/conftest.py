@@ -71,6 +71,35 @@ class FakeAPI:
         )
         return mid
 
+    def send_card(self, receive_id, card, *, receive_id_type="open_id"):
+        self._maybe_fail("send_card")
+        if not self.cards_ok:
+            raise FeishuAPIError(230001, "card not enabled in fake")
+        self._n += 1
+        mid = f"om_bot{self._n}"
+        self.replies.append(
+            dict(
+                receive_id=receive_id,
+                receive_id_type=receive_id_type,
+                card=card,
+                id=mid,
+                type="interactive",
+                text=card.get("header", {}).get("title", {}).get("content", ""),
+            )
+        )
+        self.calls.append(("send_card", receive_id, receive_id_type))
+        return mid
+
+    def send_text(self, receive_id, text, *, receive_id_type="open_id"):
+        self._maybe_fail("send_text")
+        self._n += 1
+        mid = f"om_bot{self._n}"
+        self.replies.append(
+            dict(receive_id=receive_id, receive_id_type=receive_id_type, text=text, id=mid, type="text")
+        )
+        self.calls.append(("send_text", receive_id, receive_id_type))
+        return mid
+
     def search_records(self, app_token, table_id, filter_info, page_size=20):
         self._maybe_fail("search_records")
         items = [

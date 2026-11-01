@@ -28,6 +28,8 @@ def main():
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text())
     assert __version__ == metadata["project"]["version"] == importlib.metadata.version("feishu-bitable-bot") == "1.0.0"
     assert metadata["project"]["scripts"]["personal-agent"] == "bitable_bot.personal_agent.cli:main"
+    assert metadata["project"]["scripts"]["requirements-deliver"] == "bitable_bot.requirements_v09.send_adapter:main"
+    assert (ROOT / "docs/zh-CN/requirements-ops.md").is_file()
     for name in ("CHANGELOG.md", "CHANGELOG.zh-CN.md"):
         assert "## [1.0.0]" in (ROOT / name).read_text()
     for name in ("README.md", "README.zh-CN.md"):
