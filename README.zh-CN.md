@@ -1,11 +1,14 @@
-# feishu-bitable-bot
+# Agent-Driven Requirements
 
-**1.0.0 Personal Agent：** 主动填进展/日报/周报、我的任务与开工档案、改摘要/作废、skill 去重及仅已确认的管理者正文。[部署与 API](docs/zh-CN/requirements-1.0.md) · [原始 PLAN](docs/zh-CN/requirements-1.0-plan.md)。
+**Agent 驱动的需求管理与进展跟进** — 飞书组织侧机器人 + 多维表唯一数据源 + 本机 progress-sync。飞书里机器人外显名仍可为 **需求小助手**。
 
-**0.9.0：** [需求收集与进展同步部署说明](docs/zh-CN/requirements-0.9.md) · [本机 progress-sync skill](skills/progress-sync/SKILL.md)。扩展原需求小助手，提供四表入池、本人进展同步与日报/周报确认骨架。
+**1.0.0：** 组织侧个人确认与主动填进展/日报/周报（我的任务、开工档案、改摘要/作废）、skill 去重、仅已确认进入管理者正文。[部署与 API](docs/zh-CN/requirements-1.0.md) · [原始 PLAN](docs/zh-CN/requirements-1.0-plan.md)。**不是**独立 Personal Agent 产品线。
 
+**0.9.0：** [需求收集与进展同步部署说明](docs/zh-CN/requirements-0.9.md) · [本机 progress-sync skill](skills/progress-sync/SKILL.md)。四表入池与日报/周报确认骨架。
 
-[![CI](https://github.com/sean-y-wang/feishu-bitable-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/sean-y-wang/feishu-bitable-bot/actions/workflows/ci.yml)
+> **包名说明：** 可安装的 Python 发行名仍为 `feishu-bitable-bot`（import `bitable_bot`），属历史兼容；产品与仓库名为 **Agent-Driven Requirements**（`sean-y-wang/agent-driven-requirements`）。
+
+[![CI](https://github.com/sean-y-wang/agent-driven-requirements/actions/workflows/ci.yml/badge.svg)](https://github.com/sean-y-wang/agent-driven-requirements/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 
@@ -21,7 +24,7 @@
 
 在群里或私聊里随口说出需求、日报、缺陷，机器人会理解自然语言（斜杠命令可选）、带上聊天上下文、按需写前确认，并把原始消息与话题摘录一并落表便于追溯。也可以直接问「Acme API 上线了吗」，它会在同一张表里检索相似记录并汇总进展。
 
-![Demo](https://cdn.jsdelivr.net/gh/sean-y-wang/feishu-bitable-bot@main/docs/assets/demo.gif)
+![Demo](https://cdn.jsdelivr.net/gh/sean-y-wang/agent-driven-requirements@main/docs/assets/demo.gif)
 
 *演示：自然语言记录（写前确认）+ 进展查询，无需斜杠命令。*
 
@@ -86,8 +89,8 @@
 ## 快速开始
 
 ```bash
-git clone https://github.com/sean-y-wang/feishu-bitable-bot.git
-cd feishu-bitable-bot
+git clone https://github.com/sean-y-wang/agent-driven-requirements.git
+cd agent-driven-requirements
 cp .env.example .env                       # App ID / Secret / LLM Key
 # 推荐：需求小助手
 cp config/roles.requirements.yaml config/roles.yaml
@@ -113,7 +116,7 @@ English: [Quick start](docs/en/quickstart.md) · [Feishu setup](docs/en/feishu-s
 
 高层数据流（单进程、仅出站 WebSocket 长连接）：
 
-![架构图](https://cdn.jsdelivr.net/gh/sean-y-wang/feishu-bitable-bot@main/docs/assets/architecture.png)
+![架构图](https://cdn.jsdelivr.net/gh/sean-y-wang/agent-driven-requirements@main/docs/assets/architecture.png)
 
 ```mermaid
 flowchart LR
@@ -136,7 +139,7 @@ flowchart LR
 ## 项目结构
 
 ```text
-feishu-bitable-bot/
+agent-driven-requirements/
 ├── config/
 │   └── roles.example.yaml      # 复制为 roles.yaml（已 gitignore）
 ├── docs/

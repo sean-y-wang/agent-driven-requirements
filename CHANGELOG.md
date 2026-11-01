@@ -2,16 +2,23 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). [简体中文](CHANGELOG.zh-CN.md)
 
+## [Unreleased]
+
+### Changed
+- Project product name is now **Agent-Driven Requirements**; GitHub repository renamed to `sean-y-wang/agent-driven-requirements`. Feishu bot display name remains 需求小助手. The installable Python package remains `feishu-bitable-bot` (import `bitable_bot`) for compatibility.
+- Product boundary: continue requirements management & progress tracking only; do **not** pull through a standalone Personal Agent product. 1.0 confirmation / active fill APIs are organization-bot personal confirmation capabilities.
+- Docs and metadata (README, CONTRIBUTING, Docker image tag `agent-driven-requirements`, project.urls) aligned to the new brand; user-facing card copy no longer points at a separate PA product.
+
 ## [1.0.0] - 2026-11-01
 
 ### Added
-- Personal Agent tools: owned tasks, task dossiers, related requirements, due report inbox, per-item/full-summary edits, whole-report confirmation and void actions. Empty coding days offer manual reporting.
-- Authenticated `personal-agent` CLI and testable Python API for `progress.submit`, `daily.confirm`, `weekly.confirm`; conservative Chinese intent-to-tool proposals, personal OAuth identity, strict payload validation and fixture-only dry runs.
+- Organization-bot personal confirmation tools: owned tasks, task dossiers, related requirements, due report inbox, per-item/full-summary edits, whole-report confirmation and void actions. Empty coding days offer manual reporting.
+- Authenticated `personal-agent` CLI (historical command name) and testable Python API for `progress.submit`, `daily.confirm`, `weekly.confirm`; conservative Chinese intent-to-tool proposals, personal OAuth identity, strict payload validation and fixture-only dry runs.
 - Persistent owner/revision/expiry-checked report state, Feishu edit form callbacks and SDK card updates; existing 0.9 confirmation databases migrate in place.
 - `verify_v10.py`, S1–S6 fixtures, bilingual guides, and a requirements compose overlay with persistent report DB and shared progress locks.
 
 ### Fixed
-- Share stable progress keys and process locks across PA and progress-sync; preserve source identity when forwarding skill entries.
+- Share stable progress keys and process locks across personal confirmation CLI and progress-sync; preserve source identity when forwarding skill entries.
 - Exclude group/review-required progress from personal confirmation. Manager reports use immutable confirmed weekly snapshots, include Monday's previous-week output, and never publish pending drafts or later raw updates.
 - Keep user edits and void states across scheduler refresh; invalidate old revisions even when text is edited back to an earlier value.
 
@@ -28,7 +35,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Durable daily/weekly confirmation drafts, weekday 09:00 / Friday 18:00 scheduler outbox, stale daily redrafts, and complete cross-person manager reports with missing confirmations and risks.
 - Administrator deployment guide, PR draft, card snapshots, and offline acceptance script. Real scheduled delivery and native Agent hook registration remain deployment adapters.
 
-## [Unreleased]
+## 2026-10 — Dashboard notes (pre-rename Unreleased)
 
 ### Fixed
 - Dashboard: LLM provider `base_url` is now read-only / restart-required. It was wrongly listed as hot-editable; edits via the API are rejected and the UI marks it "read-only / restart".

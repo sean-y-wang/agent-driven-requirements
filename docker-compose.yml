@@ -1,7 +1,8 @@
 services:
   bot:
     build: .
-    image: feishu-bitable-bot:latest
+    # Product image tag (historical local tag was feishu-bitable-bot:latest)
+    image: agent-driven-requirements:latest
     restart: unless-stopped
     env_file: .env            # credentials only via environment
     environment:

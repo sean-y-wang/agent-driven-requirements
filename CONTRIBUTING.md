@@ -2,7 +2,7 @@
 
 [中文](CONTRIBUTING.zh-CN.md)
 
-Thanks for helping improve **feishu-bitable-bot**.
+Thanks for helping improve **Agent-Driven Requirements** (Python package still `feishu-bitable-bot`).
 
 ## Setup
 

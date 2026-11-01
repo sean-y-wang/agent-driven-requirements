@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1
+# Image for Agent-Driven Requirements (pip package name remains feishu-bitable-bot).
 FROM python:3.12-slim AS build
 WORKDIR /src
 COPY pyproject.toml README.md LICENSE ./

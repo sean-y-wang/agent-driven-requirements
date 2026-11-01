@@ -4,7 +4,7 @@
 
 ## 数据流
 
-![架构图](https://cdn.jsdelivr.net/gh/sean-y-wang/feishu-bitable-bot@main/docs/assets/architecture.png)
+![架构图](https://cdn.jsdelivr.net/gh/sean-y-wang/agent-driven-requirements@main/docs/assets/architecture.png)
 
 ```text
 飞书 / Lark

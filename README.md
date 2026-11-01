@@ -1,11 +1,14 @@
-# feishu-bitable-bot
+# Agent-Driven Requirements
 
-**1.0.0 Personal Agent:** active progress/report APIs, owned tasks and dossiers, editable confirmations, shared skill deduplication, and confirmed-only manager reports. [Guide](docs/en/requirements-1.0.md) · [中文](docs/zh-CN/requirements-1.0.md).
+**Agent-driven requirements management & progress tracking** — Feishu/Lark organization bot + Bitable system of record + local progress-sync. The in-chat bot display name remains **需求小助手** (Requirements Assistant).
 
-**0.9.0:** [Requirements progress deployment guide (中文)](docs/zh-CN/requirements-0.9.md) · [Local progress-sync skill](skills/progress-sync/SKILL.md). Extends the same bot with four tables and daily/weekly confirmation scaffolding.
+**1.0.0:** organization-side personal confirmation & active progress/report APIs (owned tasks, dossiers, editable confirmations), shared skill deduplication, and confirmed-only manager reports. [Guide](docs/en/requirements-1.0.md) · [中文](docs/zh-CN/requirements-1.0.md). This is **not** a standalone Personal Agent product line.
 
+**0.9.0:** [Requirements progress deployment guide (中文)](docs/zh-CN/requirements-0.9.md) · [Local progress-sync skill](skills/progress-sync/SKILL.md). Four tables and daily/weekly confirmation scaffolding.
 
-[![CI](https://github.com/sean-y-wang/feishu-bitable-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/sean-y-wang/feishu-bitable-bot/actions/workflows/ci.yml)
+> **Package note:** the installable Python distribution is still named `feishu-bitable-bot` (import `bitable_bot`) for compatibility; the product and repository are **Agent-Driven Requirements** (`sean-y-wang/agent-driven-requirements`).
+
+[![CI](https://github.com/sean-y-wang/agent-driven-requirements/actions/workflows/ci.yml/badge.svg)](https://github.com/sean-y-wang/agent-driven-requirements/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 
@@ -21,7 +24,7 @@
 
 Capture requirements, daily reports, and bugs from group chat or DM. The bot understands natural language (slash commands optional), pulls conversation context, confirms before writing when you want, and keeps a full trail back to the original message. Ask “is Acme API shipped yet?” and it searches the same table for progress.
 
-![Demo](https://cdn.jsdelivr.net/gh/sean-y-wang/feishu-bitable-bot@main/docs/assets/demo.gif)
+![Demo](https://cdn.jsdelivr.net/gh/sean-y-wang/agent-driven-requirements@main/docs/assets/demo.gif)
 
 *Demo: natural-language record with confirm, then a progress query — no slash commands required.*
 
@@ -84,8 +87,8 @@ Works over Feishu’s **WebSocket long connection** — deploy on a laptop or in
 ## Quick start
 
 ```bash
-git clone https://github.com/sean-y-wang/feishu-bitable-bot.git
-cd feishu-bitable-bot
+git clone https://github.com/sean-y-wang/agent-driven-requirements.git
+cd agent-driven-requirements
 cp .env.example .env                       # App ID / Secret / LLM keys
 cp config/roles.example.yaml config/roles.yaml   # app_token / table_id / fields
 docker compose up -d --build
@@ -108,7 +111,7 @@ Then: open the Feishu developer console → scopes + long connection + publish �
 
 High-level data flow (single process, outbound WebSocket only):
 
-![Architecture](https://cdn.jsdelivr.net/gh/sean-y-wang/feishu-bitable-bot@main/docs/assets/architecture.png)
+![Architecture](https://cdn.jsdelivr.net/gh/sean-y-wang/agent-driven-requirements@main/docs/assets/architecture.png)
 
 ```mermaid
 flowchart LR
@@ -131,7 +134,7 @@ Details: [docs/en/architecture.md](docs/en/architecture.md).
 ## Project structure
 
 ```text
-feishu-bitable-bot/
+agent-driven-requirements/
 ├── config/
 │   └── roles.example.yaml      # copy → roles.yaml (gitignored)
 ├── docs/
