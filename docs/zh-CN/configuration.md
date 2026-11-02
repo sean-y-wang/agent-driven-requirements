@@ -12,6 +12,8 @@
 |---|---|
 | `FEISHU_APP_ID` / `FEISHU_APP_SECRET` | 必填，应用凭证 |
 | `FEISHU_DOMAIN` | `feishu`（默认）、`lark` 或 `xfchat`（i讯飞私有化飞书） |
+| `FEISHU_WEB_DOMAIN` | 租户网页地址（记录链接）；`xfchat` 必填 |
+| `FEISHU_APPLINK_HOST` | 可选 AppLink 域名；`xfchat` 未设置时不生成消息深链 |
 | `FEISHU_BOT_OPEN_ID` | 可选；精确去掉 @机器人 |
 | `BOT_SCENARIO` | 内置场景：`requirements` → 加载 `config/roles.requirements.yaml`（需求小助手） |
 | `BOT_CONFIG` | 自定义 `roles.yaml` 路径（若设置则覆盖 `BOT_SCENARIO`） |
