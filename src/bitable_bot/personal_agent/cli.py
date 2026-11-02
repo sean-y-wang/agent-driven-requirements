@@ -80,13 +80,12 @@ def main(argv=None):
         if args.fixture:
             api = FixtureAPI(json.loads(args.fixture.read_text()), cfg.tables)
         else:
-            domain = os.environ.get("FEISHU_DOMAIN", "feishu")
-            if domain not in ("feishu", "lark"):
-                raise ValueError("FEISHU_DOMAIN 必须为 feishu 或 lark")
-            api = UserAPI(
-                os.environ.get("FEISHU_USER_ACCESS_TOKEN", ""),
-                "https://open.larksuite.com" if domain == "lark" else "https://open.feishu.cn",
-            )
+            from ..main import DOMAINS
+
+            domain = os.environ.get("FEISHU_DOMAIN", "feishu").lower()
+            if domain not in DOMAINS:
+                raise ValueError("FEISHU_DOMAIN 必须为 " + " / ".join(DOMAINS))
+            api = UserAPI(os.environ.get("FEISHU_USER_ACCESS_TOKEN", ""), DOMAINS[domain][0])
         reports = ReportStore() if args.dry_run else ReportStore(args.db)
         # Copy read-only to avoid touching or migrating an on-disk database during dry-run.
         if args.dry_run and args.db.exists():

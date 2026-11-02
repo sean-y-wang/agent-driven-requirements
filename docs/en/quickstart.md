@@ -19,7 +19,7 @@ Edit `.env`:
 |---|---|---|
 | `FEISHU_APP_ID` | yes | From Feishu Open Platform → Credentials |
 | `FEISHU_APP_SECRET` | yes | Same page; never commit |
-| `FEISHU_DOMAIN` | no | `feishu` (default) or `lark` |
+| `FEISHU_DOMAIN` | no | `feishu` (default), `lark`, or `xfchat` (i讯飞私有化飞书) |
 | `BOT_SCENARIO` | no | set to `requirements` for the built-in assistant |
 | `OPENAI_API_KEY` / `DASHSCOPE_API_KEY` / … | one of them | Must match `${…}` references in `roles.yaml` |
 
