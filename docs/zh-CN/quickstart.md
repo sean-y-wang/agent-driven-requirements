@@ -19,7 +19,7 @@ cp config/roles.requirements.yaml config/roles.yaml
 |---|---|---|
 | `FEISHU_APP_ID` | 是 | 飞书开放平台 → 凭证与基础信息 |
 | `FEISHU_APP_SECRET` | 是 | 同上；切勿提交到 Git |
-| `FEISHU_DOMAIN` | 否 | `feishu`（默认）或 `lark` |
+| `FEISHU_DOMAIN` | 否 | `feishu`（默认）、`lark` 或 `xfchat`（i讯飞私有化飞书） |
 | `OPENAI_API_KEY` / `DASHSCOPE_API_KEY` / … | 至少一个 | 需与 `roles.yaml` 里的 `${…}` 引用一致 |
 | `BOT_SCENARIO` | 否 | 设为 `requirements` 启用内置需求小助手 |
 

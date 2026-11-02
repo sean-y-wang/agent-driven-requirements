@@ -20,7 +20,7 @@ class UserAPI:
     def __init__(self, token: str, domain="https://open.feishu.cn"):
         if not token:
             raise ValueError("未登录：请设置 FEISHU_USER_ACCESS_TOKEN（本人 OAuth），不能使用机器人凭证。")
-        if domain not in ("https://open.feishu.cn", "https://open.larksuite.com"):
+        if domain not in ("https://open.feishu.cn", "https://open.larksuite.com", "https://open.xfchat.iflytek.com"):
             raise ValueError("unsupported Feishu domain")
         self._token = token
         self.domain = domain

@@ -25,6 +25,10 @@ log = structlog.get_logger(__name__)
 DOMAINS = {
     "feishu": ("https://open.feishu.cn", "https://feishu.cn", "applink.feishu.cn"),
     "lark": ("https://open.larksuite.com", "https://larksuite.com", "applink.larksuite.com"),
+    # iFLYTEK private Feishu (i讯飞 / xfchat). Long connection goes to the same open domain.
+    # Web host is tenant-specific and AppLink host is unverified: both come from env
+    # (FEISHU_WEB_DOMAIN required, FEISHU_APPLINK_HOST optional) rather than being guessed.
+    "xfchat": ("https://open.xfchat.iflytek.com", "", ""),
 }
 
 
@@ -56,8 +60,15 @@ class Settings:
         self.app_secret = env["FEISHU_APP_SECRET"]
         domain = env.get("FEISHU_DOMAIN", "feishu").lower()
         if domain not in DOMAINS:
-            raise ConfigError("FEISHU_DOMAIN must be 'feishu' or 'lark'")
+            raise ConfigError(f"FEISHU_DOMAIN must be one of: {', '.join(DOMAINS)}")
         self.open_domain, self.web_domain, self.applink_host = DOMAINS[domain]
+        # Tenant web host (e.g. https://yf2ljykclb.xfchat.iflytek.com) for record links.
+        if env.get("FEISHU_WEB_DOMAIN"):
+            self.web_domain = env["FEISHU_WEB_DOMAIN"].rstrip("/")
+        if env.get("FEISHU_APPLINK_HOST"):
+            self.applink_host = env["FEISHU_APPLINK_HOST"].strip().strip("/")
+        if not self.web_domain:
+            raise ConfigError(f"FEISHU_WEB_DOMAIN is required when FEISHU_DOMAIN={domain}")
         self.config_path = resolve_config_path(env)
         self.db_path = env.get("BOT_DB_PATH", "data/bot.db")
         self.report_db_path = env.get("REPORT_DB_PATH", "data/reports.db")

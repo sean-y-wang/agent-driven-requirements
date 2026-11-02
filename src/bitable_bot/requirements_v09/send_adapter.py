@@ -98,6 +98,22 @@ def chunk_text(body: str, size: int = CHUNK_SIZE) -> list[str]:
     return [text[i : i + size] for i in range(0, len(text), size)]
 
 
+def recipient_target(recipient: dict[str, str]) -> tuple[str, str]:
+    """Pick (receive_id, receive_id_type) without contact lookups.
+
+    Preference: open_id > chat_id > email. Email is sent directly with
+    receive_id_type=email so the bot needs no contact:user.id:readonly scope
+    (xfchat returns 99991672 for batch_get_id without it).
+    """
+    if recipient.get("open_id"):
+        return recipient["open_id"], "open_id"
+    if recipient.get("chat_id"):
+        return recipient["chat_id"], "chat_id"
+    if recipient.get("email"):
+        return recipient["email"], "email"
+    return "", "open_id"
+
+
 def manager_delivery_items(manager: dict | None, recipients: list[dict[str, str]]) -> list[dict]:
     """Turn manager weekly payload into dedupable delivery items (one per recipient)."""
     if not manager or not recipients:
@@ -108,13 +124,9 @@ def manager_delivery_items(manager: dict | None, recipients: list[dict[str, str]
     item_id = f"manager:{period}"
     items = []
     for recipient in recipients:
-        rid = recipient.get("open_id") or recipient.get("chat_id") or ""
+        rid, receive_id_type = recipient_target(recipient)
         if not rid:
             continue
-        receive_id_type = "chat_id" if recipient.get("chat_id") and not recipient.get("open_id") else "open_id"
-        if recipient.get("chat_id") and not recipient.get("open_id"):
-            rid = recipient["chat_id"]
-            receive_id_type = "chat_id"
         items.append(
             {
                 "id": item_id,

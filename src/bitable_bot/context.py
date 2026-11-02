@@ -55,6 +55,8 @@ def build_message_link(item: dict[str, Any], chat_id: str, host: str) -> str:
     link = str(item.get("message_app_link") or "").strip()
     if link:
         return link
+    if not host:  # no verified AppLink host for this deployment: omit rather than guess
+        return ""
     chat = item.get("chat_id") or chat_id
     thread_id, tpos, mpos = item.get("thread_id"), item.get("thread_message_position"), item.get("message_position")
     if thread_id and chat and tpos is not None:
