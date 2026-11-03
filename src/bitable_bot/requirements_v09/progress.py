@@ -171,7 +171,7 @@ def sync(
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="本人进展同步；会话结束静默写入，不发送确认卡片")
-    parser.add_argument("action", choices=["map", "sync"])
+    parser.add_argument("action", choices=["map", "sync", "dossier"])
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--mapping", type=Path, default=Path.home() / ".config/progress-sync/projects.json")
     parser.add_argument("--module", choices=MODULES)
@@ -198,6 +198,33 @@ def main(argv=None):
                 if not args.dry_run:
                     args.mapping.write_text(json.dumps(mappings, ensure_ascii=False, indent=2))
             result = {"project": root, "module": args.module}
+        elif args.action == "dossier":
+            # PRD 任务档案：开工前先读目标、来源需求、依赖、最近进展和未解除风险；只读，不写表。
+            if not args.config:
+                raise ValueError("读档案需 --config")
+            cfg = load_config(args.config)
+            if not cfg.tables:
+                raise ValueError("任务档案需要四表配置。")
+            from .prd2 import brief_text, dossier
+
+            if args.fixture_tasks:
+                if not args.dry_run:
+                    raise ValueError("fixture 仅供 dry-run。")
+                api, rows, user_id = None, json.loads(args.fixture_tasks.read_text()), args.fixture_user or ""
+            else:
+                api = UserAPI(os.environ.get("FEISHU_USER_ACCESS_TOKEN", ""))
+                user_id = api.identity()
+                rows = api.list_all_records(cfg.tables.tasks.app_token, cfg.tables.tasks.table_id)
+            task = match_task(rows, cfg.tables.tasks, user_id, read_mapping(args.mapping, args.repo), args.task)
+            if api is None:
+                d = {"task": {"title": cell_text((task.get("fields") or {}).get("任务标题")), "record_id": task["record_id"]}}
+                result = d
+            else:
+                d = dossier(api, cfg.tables, task["record_id"], cfg.timezone, tasks=rows)
+                if args.quiet:
+                    return 0
+                print(brief_text(d))
+                return 0
         else:
             if not args.config or not args.agent:
                 raise ValueError("同步需 --config 和 --agent")
