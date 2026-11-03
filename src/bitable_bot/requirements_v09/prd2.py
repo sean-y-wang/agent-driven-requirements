@@ -439,7 +439,12 @@ def refresh_open_deps(api, tables: Tables) -> int:
     for r in rows:
         f = r.get("fields") or {}
         cnt = sum(1 for i in links(f.get(c["deps"])) if status.get(i, "") not in DONE_TASK)
-        if f.get(c["open_deps"]) != cnt:
+        cur = f.get(c["open_deps"])
+        try:
+            same = cur is not None and cur != "" and float(cur) == cnt
+        except (TypeError, ValueError):
+            same = False
+        if not same and not (cnt == 0 and cur in (None, "")):  # 空且无依赖：不写，避免无谓修改触发自动化
             api.update_record(tables.tasks.app_token, tables.tasks.table_id, r["record_id"], {c["open_deps"]: cnt})
             n += 1
     return n

@@ -126,3 +126,22 @@ def test_ops_flags_default_off():
     assert cfg.ops_review.enabled is False and cfg.schedule_notify.dry_run is True
     assert cfg.schedule_notify.assign_brief is False and cfg.weekly_doc.enabled is False
     assert cfg.reports.manager_schedule == "mon09" and cfg.reports.risk_to_ops is False
+
+
+def test_refresh_open_deps_minimal_writes(tables):
+    class API:
+        def __init__(self):
+            self.updates = []
+
+        def list_all_records(self, *_):
+            return [{"record_id": "recA", "fields": {"状态": "开发中", "未完成依赖": "0"}},
+                    {"record_id": "recB", "fields": {"状态": "开发中", "依赖任务": ["recA"], "未完成依赖": "1"}},
+                    {"record_id": "recC", "fields": {"状态": "开发中", "依赖任务": ["recA"]}},
+                    {"record_id": "recD", "fields": {"状态": "开发中"}}]
+
+        def update_record(self, app, table, rid, fields):
+            self.updates.append((rid, fields))
+
+    api = API()
+    assert prd2.refresh_open_deps(api, tables) == 1
+    assert api.updates == [("recC", {"未完成依赖": 1})]
