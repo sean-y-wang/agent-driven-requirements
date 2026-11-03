@@ -96,11 +96,9 @@ def test_report_callback_requires_owner_and_current_revision(intake):
     svc.clock = lambda: datetime.fromisoformat("2026-11-06T09:01:00+08:00").timestamp()
     draft = svc.report_store.draft("ou_alice", "daily", "2026-11-06", "完成联调")
     value = {"kind": "report_confirm", "report_id": draft["id"], "revision": draft["revision"]}
-    assert svc.handle_card_action({"action": {"value": value}})["toast"]["type"] == "error"
-    assert (
-        svc.handle_card_action({"operator": {"open_id": "ou_bob"}, "action": {"value": value}})["toast"]["type"]
-        == "error"
-    )
+    # UX: 失效/非本人确认卡静默，不再弹 error toast
+    assert svc.handle_card_action({"action": {"value": value}}) == {}
+    assert svc.handle_card_action({"operator": {"open_id": "ou_bob"}, "action": {"value": value}}) == {}
     assert (
         svc.handle_card_action({"operator": {"open_id": "ou_alice"}, "action": {"value": value}})["toast"]["type"]
         == "success"

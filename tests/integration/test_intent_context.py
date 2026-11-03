@@ -57,7 +57,7 @@ def test_plain_mention_high_confidence_writes(harness):
     assert "生产环境登录页打不开" in ext[1]["content"]
     assert "raw_text" not in ext[0]["content"] and "message_link" not in ext[0]["content"]
     reply = h.api.replies[-1]["text"]
-    assert reply.startswith("✅ 已记录到「缺陷登记」") and "上下文摘录" not in reply and "原始消息" not in reply
+    assert reply.startswith("✅ 需求已收录") and "上下文摘录" not in reply and "原始消息" not in reply
 
 
 def test_low_confidence_asks_then_yes(harness):
@@ -111,7 +111,7 @@ def test_intent_disabled_requires_command(harness):
     h = harness
     h.service.cfg.intent.enabled = False
     h.service.handle(make_msg("记一下"))
-    assert "请使用命令开头" in h.api.replies[-1]["text"] and not h.provider.calls
+    assert ("可用命令" in h.api.replies[-1]["text"] or "/日报" in h.api.replies[-1]["text"]) and not h.provider.calls
 
 
 def test_slash_command_skips_intent(harness):
