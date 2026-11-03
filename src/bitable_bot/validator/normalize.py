@@ -283,6 +283,12 @@ def normalize_value(spec: FieldSpec, v: Any, ctx: Context) -> Any:
         return _user(v, ctx)
     if t == "url":
         return _url(v)
+    if t == "link":
+        items = v if isinstance(v, list) else [v]
+        out_l = [x for x in items if isinstance(x, str) and x.startswith("rec")]
+        if not out_l:
+            raise Missing()
+        return out_l
     if t == "attachment":
         items = v if isinstance(v, list) else [v]
         out = [{"file_token": it["file_token"]} for it in items if isinstance(it, dict) and it.get("file_token")]

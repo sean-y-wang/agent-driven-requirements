@@ -7,7 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 FieldType = Literal[
-    "text", "number", "single_select", "multi_select", "date", "checkbox", "user", "url", "phone", "attachment"
+    "text", "number", "single_select", "multi_select", "date", "checkbox", "user", "url", "phone", "attachment", "link"
 ]
 
 
@@ -235,7 +235,7 @@ class SessionConfig(BaseModel):
 STATUSES = ("待分诊", "待评审", "进行中", "阻塞", "已完成", "已关闭")
 AGENTS = ("Claude Code", "Codex", "Orca", "群", "其他")
 MODULES = ("AIPaaS 4.0", "AICloud Labs")
-TableName = Literal["requirements", "tasks", "progress", "modules", "members"]
+TableName = Literal["requirements", "tasks", "progress", "modules", "members", "external"]
 
 
 class TableSpec(Target):
@@ -261,9 +261,11 @@ class Tables(BaseModel):
     modules: TableSpec
     # 成员配置（可选）：成员/角色/提出部门。未配置或读失败时回退 JSON 名单。
     members: TableSpec | None = None
+    # 外部依赖（可选）：我们向外部团队提的需求；被阻塞任务与研发计划表双向关联。
+    external: TableSpec | None = None
 
     def get(self, name: TableName) -> TableSpec:
-        if name not in ("requirements", "tasks", "progress", "modules", "members"):
+        if name not in ("requirements", "tasks", "progress", "modules", "members", "external"):
             raise ValueError(f"unknown table: {name}")
         spec = getattr(self, name)
         if spec is None:
@@ -278,6 +280,43 @@ class OverdueNotifyConfig(BaseModel):
     dry_run: bool = True  # 只记日志不发消息；确认名单无误后再关
     hour: int = Field(10, ge=0, le=23)  # 本地时区每天几点后扫描
     done_statuses: list[str] = Field(default_factory=lambda: ["已上线", "已完成", "已关闭"])
+
+
+class ScheduleNotifyConfig(BaseModel):
+    """中插/顺延后的延期通知、换执行人时的任务简报。dry_run=True 只记日志不发。"""
+
+    dry_run: bool = True
+    assign_brief: bool = False  # 定时扫描开发/参与人变化，给新执行人发简报（受 dry_run 约束）
+    maintenance_interval: float = Field(1800.0, ge=60)  # 未完成依赖计数刷新间隔（秒）
+
+
+class OpsReviewConfig(BaseModel):
+    """产品运营评估卡：需求入池后发给「成员配置」里的产品运营（+ 指定执行人）。负责人未定前默认关闭。"""
+
+    enabled: bool = False
+    # 显式 open_id 名单；为空时读成员配置表角色=产品运营
+    open_ids: list[str] = Field(default_factory=list)
+
+
+class WeeklyDocConfig(BaseModel):
+    """个人周报确认后写入当周文档（每周一篇、每人一个小节）。默认关闭。"""
+
+    enabled: bool = False
+    folder_token: str = ""  # 云文档目录；空 = 应用根目录
+    wiki_space_id: str = ""  # 知识库空间（xfchat 应用当前不可见任何空间，留空）
+    wiki_parent_node: str = ""
+    title_fmt: str = "{year} 第 {week} 周周报"
+
+
+class ReportsConfig(BaseModel):
+    """日报风险预警 / 管理者汇总时间。"""
+
+    risk_alerts: bool = True
+    near_days: int = Field(3, ge=0, le=30)
+    stale_days: int = Field(3, ge=1, le=30)
+    # 管理者汇总：mon09=周一 9:00（现状）、fri14=周五 14:00（PRD）、both=两个都发
+    manager_schedule: str = Field("mon09", pattern="^(mon09|fri14|both)$")
+    risk_to_ops: bool = False  # 日报确认后把风险同步给产品运营（无产品运营时为空操作）
 
 
 class IntakeConfig(BaseModel):
@@ -315,6 +354,10 @@ class AppConfig(BaseModel):
     chat_field_bindings: list[ChatFieldBinding] = Field(default_factory=list)
     remote_config: RemoteConfig = Field(default_factory=RemoteConfig)
     overdue_notify: OverdueNotifyConfig = Field(default_factory=OverdueNotifyConfig)
+    schedule_notify: ScheduleNotifyConfig = Field(default_factory=ScheduleNotifyConfig)
+    ops_review: OpsReviewConfig = Field(default_factory=OpsReviewConfig)
+    weekly_doc: WeeklyDocConfig = Field(default_factory=WeeklyDocConfig)
+    reports: ReportsConfig = Field(default_factory=ReportsConfig)
 
     @model_validator(mode="before")
     @classmethod
