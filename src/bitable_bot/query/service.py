@@ -74,12 +74,13 @@ class QueryService:
         )
         if not candidates:
             label = query_text.strip() or " ".join(kws) or "相关"
-            hint = self.cfg.query_docs_hint or "请打开需求多维表格自行检索。"
-            text = (
-                f"在「{role.name}」里没找到和「{label}」相关的需求记录。"
-                f"可以换更具体的关键词再问，或{hint}"
-                f"也可以直接 {role.command} … 登记新需求。"
-            )
+            hint = (self.cfg.query_docs_hint or "").strip()
+            lines = [f"没找到和「{label}」相关的需求。"]
+            if hint:
+                lines.append(hint)
+            else:
+                lines.append("可以换个关键词再问，或直接说新需求让我帮你记。")
+            text = "\n".join(lines)
             return QueryResult(text=text, summary=text)
         provider = provider_chain(self.providers, role.llm or self.default, self.cfg.llm.fallback)
         summary, reply, chosen = rerank_and_summarize(

@@ -131,15 +131,9 @@ def help_text(cfg: AppConfig, chat_id: str | None = None) -> str:
     if cfg.dedicated and cfg.roles:
         r = cfg.roles[0]
         lines = [
-            f"我是{name}，目前专注两件事：",
-            "1）提需求 — 直接 @我用自然语言说明，我会在话题里用卡片请你确认 / 取消 / 修改后再写入",
-            "2）查进展 — 问「我的需求进展如何 / XX 上线了吗」，按你的提问和提出人匹配，卡片最多回 2 条",
+            f"我是{name}。直接说需求（标题+背景），确认后收录；也可问我查进展。",
+            f"命令 {r.command} …；不行就 /取消。",
         ]
-        if cfg.query_docs_hint:
-            lines.append(f"   （{cfg.query_docs_hint}）")
-        if cfg.tables:
-            lines.append("0.9：自动候选进入待分诊并标记复核；群进展静默写入进展日志待复核，不找本人确认。")
-        lines.append(f"也可用命令 {r.command} …；/取消 放弃未完成的记录；/help 查看本帮助。")
         return "\n".join(lines)
     lines = ["可用命令（@我 + 命令 + 内容）："]
     for r in cfg.roles:

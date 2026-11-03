@@ -267,6 +267,8 @@ class IntakeConfig(BaseModel):
     # Administrator acknowledgement; the application cannot infer missing push events.
     all_messages_permission: bool = False
     observed_chats: list[str] = Field(default_factory=list)
+    # Users allowed to toggle per-chat observe via @bot 开启监听/关闭监听 (state persisted in bot.db)
+    observe_admins: list[str] = Field(default_factory=list)
 
 
 class AppConfig(BaseModel):
@@ -325,8 +327,8 @@ class AppConfig(BaseModel):
         if self.intake.observe_groups:
             if not self.tables or not self.intake.all_messages_permission:
                 raise ValueError("群自动识别需要四表配置及群全部消息可读权限；请管理员开通并设置 all_messages_permission=true")
-            if not self.intake.observed_chats:
-                raise ValueError("群自动识别需要 observed_chats 明确指定群")
+            if not self.intake.observed_chats and not self.intake.observe_admins:
+                raise ValueError("群自动识别需要 observed_chats 或 observe_admins（按群开启）")
         seen: set[str] = set()
         for r in self.roles:
             for c in r.commands:

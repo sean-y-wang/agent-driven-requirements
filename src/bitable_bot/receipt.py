@@ -12,6 +12,8 @@ _HIDDEN = frozenset({"$context", "$raw_text"})
 # Trace / provenance defaults — omit from confirm card body (footer only).
 _TRACE_DEFAULTS = frozenset({"$context", "$raw_text", "$message_link", "$chat_name", "$now"})
 _TRACE_KEYS = frozenset({"source", "raw_text", "context", "message_link", "submitted_at"})
+# System-set markers — keep off confirm/receipt cards (users don't need to act on them).
+_SYSTEM_KEYS = frozenset({"review", "agent"})
 
 
 def visible_specs(role: Role, values: dict[str, Any] | None = None) -> list[FieldSpec]:
@@ -26,10 +28,10 @@ def visible_specs(role: Role, values: dict[str, Any] | None = None) -> list[Fiel
 
 
 def confirm_specs(role: Role, values: dict[str, Any] | None = None) -> list[FieldSpec]:
-    """Decision fields only: title/desc/business + proposer; no long trace fields."""
+    """Decision fields only: title/desc/business + proposer; no long trace/system fields."""
     out = []
     for spec in role.fields:
-        if spec.key in _TRACE_KEYS:
+        if spec.key in _TRACE_KEYS or spec.key in _SYSTEM_KEYS:
             continue
         if isinstance(spec.default, str) and spec.default in _TRACE_DEFAULTS:
             continue
@@ -37,6 +39,11 @@ def confirm_specs(role: Role, values: dict[str, Any] | None = None) -> list[Fiel
             continue
         out.append(spec)
     return out
+
+
+def receipt_specs(role: Role, values: dict[str, Any] | None = None) -> list[FieldSpec]:
+    """Oral success receipt: same decision fields as confirm, no provenance dump."""
+    return confirm_specs(role, values)
 
 
 def _trace_footer(role: Role, values: dict[str, Any], people: dict[str, str], tz: str) -> str:
@@ -53,15 +60,13 @@ def _trace_footer(role: Role, values: dict[str, Any], people: dict[str, str], tz
 
 
 def preview_lines(role: Role, values: dict[str, Any], people: dict[str, str], tz: str) -> list[str]:
-    lines = [f"请确认写入「{role.name}」："]
+    lines = [f"请确认这条需求："]
     for spec in confirm_specs(role, values):
         lines.append(f"• {spec.field}：{fmt_value(spec, values[spec.key], people, tz)}")
     footer = _trace_footer(role, values, people, tz)
     if footer:
         lines.append(f"来源：{footer}")
-    lines.append(
-        "回复「确认 / 好 / 是 / ok」写入；点卡片「确认 / 取消 / 修改」亦可；可直接改字段，如「优先级改成 P0」；/取消 放弃。"
-    )
+    lines.append("回复「确认」收录；点卡片也可改/取消。改字段可直接说，如「优先级改成 P0」。")
     return lines
 
 
@@ -69,25 +74,25 @@ def success_text(
     role: Role, values: dict[str, Any], people: dict[str, str], tz: str, url: str, duplicated: bool = False
 ) -> str:
     title = role.receipt_title or (
-        f"🔁 这条消息已记录过「{role.name}」" if duplicated else f"✅ 已记录到「{role.name}」"
+        f"🔁 这条已经记过了" if duplicated else f"✅ 需求已收录"
     )
     if duplicated and role.receipt_title:
         title = f"🔁 {role.receipt_title}"
     lines = [title]
-    for spec in visible_specs(role, values):
+    for spec in receipt_specs(role, values):
         lines.append(f"{spec.field}：{fmt_value(spec, values[spec.key], people, tz)}")
     if url:
-        lines.append(url)
+        lines.append(f"打开记录：{url}")
     return "\n".join(lines)
 
 
 def success_card(
     role: Role, values: dict[str, Any], people: dict[str, str], tz: str, url: str, duplicated: bool = False
 ) -> dict[str, Any]:
-    title = role.receipt_title or (f"这条消息已记录过「{role.name}」" if duplicated else f"已记录到「{role.name}」")
+    title = role.receipt_title or ("这条已经记过了" if duplicated else "需求已收录")
     prefix = "🔁 " if duplicated else "✅ "
     fields = []
-    for spec in visible_specs(role, values):
+    for spec in receipt_specs(role, values):
         v = fmt_value(spec, values[spec.key], people, tz)
         fields.append({"is_short": True, "text": {"tag": "lark_md", "content": f"**{spec.field}**\n{v}"}})
     elements: list[dict[str, Any]] = []
@@ -120,15 +125,15 @@ def success_card(
 
 
 def followup_text(role: Role, missing: dict[str, str], optional_empty: list[FieldSpec]) -> str:
-    lines = [f"还需要补充以下必填信息才能记录到「{role.name}」（直接在此话题回复即可）："]
+    lines = ["还差这几项才能收录，直接在这回复就行："]
     for spec in role.fields:
         if spec.key in missing:
             hint = missing[spec.key] or spec.description or ""
             lines.append(f"• {spec.field}" + (f"（{hint}）" if hint else ""))
     if optional_empty:
         names = "、".join(f.field for f in optional_empty[:6])
-        lines.append(f"选填（{names}）可不填；若不想补充请回复「跳过」。")
-    lines.append("/取消 可放弃。")
+        lines.append(f"选填（{names}）可不填；不想补就回「跳过」。")
+    lines.append("不想继续了回 /取消。")
     return "\n".join(lines)
 
 
@@ -171,7 +176,7 @@ def confirm_card(
             "tag": "div",
             "text": {
                 "tag": "lark_md",
-                "content": "请确认是否写入。点 **修改** 后在本话题里回复字段修改（如「优先级改成 P0」）。",
+                "content": "确认后收录到需求池。点 **修改** 后直接回复要改的内容（如「优先级改成 P0」）。",
             },
         }
     )
@@ -207,7 +212,7 @@ def confirm_card(
             ],
         }
     )
-    title = f"请确认写入「{role.name}」"
+    title = "请确认这条需求"
     return {
         "config": {"wide_screen_mode": True},
         "header": {"title": {"tag": "plain_text", "content": title}, "template": "blue"},

@@ -287,7 +287,7 @@ def normalize_value(spec: FieldSpec, v: Any, ctx: Context) -> Any:
 
 
 # Variables that are always filled by the system (never asked from / overridable by the LLM).
-AUTO_VARS = frozenset({"$raw_text", "$context", "$chat_name", "$message_link", "$now"})
+AUTO_VARS = frozenset({"$raw_text", "$context", "$chat_name", "$message_link", "$now", "$sender"})
 
 
 def is_auto(spec: FieldSpec) -> bool:

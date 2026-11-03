@@ -49,6 +49,21 @@ def _auto_guide(role: Role) -> str:
     return base.strip() + (f"\n{style}" if style and role.guide_prompt is None else "")
 
 
+
+def _soft_tip(cfg: AppConfig, chat_id: str | None = None, role: Role | None = None) -> str:
+    """One short actionable line for unclear input; avoid dumping full help."""
+    if cfg.dedicated and (cfg.first_guide_text or "").strip():
+        return cfg.first_guide_text.strip()
+    r = role or (cfg.roles[0] if cfg.dedicated and cfg.roles else None)
+    if r is not None:
+        tip = (r.guide_prompt or "").strip()
+        if tip:
+            lines = [ln.strip() for ln in tip.splitlines() if ln.strip()]
+            return "\n".join(lines[:2])
+        return _auto_guide(r)
+    return help_text(cfg, chat_id)
+
+
 def _is_thin(text: str, excerpt: str, min_chars: int) -> bool:
     if min_chars <= 0:
         return False
@@ -107,6 +122,10 @@ class BotService:
         self.collector = collector or ContextCollector(api, cfg, bot_open_id=bot_open_id, clock=clock)
         self.query = query_service
         self.report_store = report_store
+        # passive group observe: anti-spam state (in-memory, resets on restart)
+        self._obs_sender_last: dict[tuple[str, str], float] = {}
+        self._obs_chat_cards: dict[str, list[float]] = {}
+        self._obs_text_seen: dict[tuple[str, str], float] = {}
 
     # ------------------------------------------------------------------ entry
     def is_duplicate(self, msg: IncomingMessage) -> bool:
@@ -152,12 +171,22 @@ class BotService:
         addressed = p2p or bot_mentioned(msg.mentions, raw, self.bot_open_id)
         if not addressed and thread_s is None:
             if (self.cfg.tables and self.cfg.intake.observe_groups and msg.chat_type == "group"
-                    and msg.chat_id in self.cfg.intake.observed_chats
+                    and (msg.chat_id in self.cfg.intake.observed_chats or self.store.is_observed(msg.chat_id))
                     and (not self.cfg.chats_allowlist or msg.chat_id in self.cfg.chats_allowlist)
                     and msg.message_type in ("text", "post") and msg.sender_open_id
                     and msg.sender_open_id != self.bot_open_id):
                 text, people = clean_text(raw, msg.mentions, self.bot_open_id, strip_leading=False)
-                self._detect(msg, text, people, passive=True)
+                sender_name = ""
+                try:
+                    sender_name = self.collector.chat_members(msg.chat_id).get(msg.sender_open_id, "")
+                except Exception:
+                    pass
+                log.info("observe.event", chat_id=msg.chat_id, message_id=msg.message_id,
+                         sender_open_id=msg.sender_open_id, sender_name=sender_name, text_len=len(text or ""))
+                try:
+                    self._detect(msg, text, people, passive=True)
+                except Exception:
+                    log.exception("observe.failed", message_id=msg.message_id)
             return
         if msg.message_type not in ("text", "post"):
             self._reply(msg.message_id, "暂只支持文字消息。发送 /help 查看用法。")
@@ -166,6 +195,10 @@ class BotService:
             self._reply(msg.message_id, "抱歉，本群未开通记录功能，请联系管理员。")
             return
         text, people = clean_text(raw, msg.mentions, self.bot_open_id, strip_leading=not p2p)
+        if (not p2p and thread_s is None and self.cfg.tables and self.cfg.intake.observe_groups
+                and (text or "").strip(" 。!！") in ("开启监听", "关闭监听", "监听状态")):
+            self._observe_command(msg, (text or "").strip(" 。!！"))
+            return
         # Fresh @ / p2p (not a thread follow-up): optional 「收到」reaction
         if addressed and thread_s is None and self.cfg.react_on_mention:
             self._react(msg.message_id)
@@ -178,7 +211,7 @@ class BotService:
                 self.store.delete_session(s)
             self._reply(msg.message_id, "已取消未完成的记录。" if sessions else "当前没有未完成的记录。")
         elif r.kind is Kind.UNKNOWN:
-            self._reply(msg.message_id, f"未知命令 {r.command}。\n" + help_text(self.cfg, msg.chat_id))
+            self._reply(msg.message_id, f"没认出命令 {r.command}。直接说需求内容，或发 /help。")
         elif r.kind is Kind.ROLE:
             assert r.role is not None
             self._maybe_first_guide(msg)
@@ -218,7 +251,7 @@ class BotService:
         if not self.cfg.intent.enabled:
             if passive:
                 return
-            self._reply(msg.message_id, "请使用命令开头，例如：\n" + help_text(self.cfg, msg.chat_id))
+            self._reply(msg.message_id, _soft_tip(self.cfg, msg.chat_id))
             return
         roles = [r for r in self.cfg.roles if self._permitted(msg, r)]
         if not roles:
@@ -238,7 +271,7 @@ class BotService:
             if len(roles) == 1:
                 self._reply(msg.message_id, _auto_guide(roles[0]))
             else:
-                self._reply(msg.message_id, "想记录什么？直接说内容即可，例如：\n" + help_text(self.cfg, msg.chat_id))
+                self._reply(msg.message_id, _soft_tip(self.cfg, msg.chat_id))
             return
         provider = self.extractor.resolve(self.cfg.intent.llm)
         intent = classify(provider, self.cfg, roles, text, conv.excerpt)
@@ -246,14 +279,21 @@ class BotService:
             # No optimistic record fallback when classification fails in 0.9.
             if intent.confidence < self.cfg.intent.min_confidence or not intent.action:
                 if not passive:
-                    self._reply(msg.message_id, help_text(self.cfg, msg.chat_id))
+                    self._reply(msg.message_id, _soft_tip(self.cfg, msg.chat_id, dedicated_role or (roles[0] if roles else None)))
                 return
             role = dedicated_role or intent.role
+            if passive:
+                log.info("observe.intent", message_id=msg.message_id, action=intent.action, confidence=intent.confidence)
+                if role and intent.action in ("record", "candidate") and self._observe_allow(msg, text):
+                    # Suspected requirement: confirm card to the speaker; nothing is written until confirmed.
+                    self._start(msg, role, text, people, raw_text=text, conv=conv, intake="passive")
+                # progress / other: gray stage does not auto-write anything
+                return
             if role and intent.action == "progress":
                 if msg.chat_type == "group":
                     self._group_progress(msg, text, role)
                 elif not passive:
-                    self._reply(msg.message_id, "个人研发进展请使用本机 progress-sync；也可查询需求或明确提需。")
+                    self._reply(msg.message_id, "私聊可直接提需求或问进展。要记今天进展，可以说「记一下今天进展：……」。")
                 return
             if role and intent.action == "candidate":
                 self._start(msg, role, text, people, raw_text=text, conv=conv, intake="candidate")
@@ -297,7 +337,7 @@ class BotService:
             or (dedicated_role.min_content_chars > 0 and _is_thin(text, conv.excerpt, dedicated_role.min_content_chars))
         ):
             log.info("intent.low_conf_guide", confidence=intent.confidence, text_len=len(text or ""))
-            self._reply(msg.message_id, help_text(self.cfg, msg.chat_id))
+            self._reply(msg.message_id, _soft_tip(self.cfg, msg.chat_id, dedicated_role))
             return
 
         if intent.role is not None and intent.confidence >= self.cfg.intent.min_confidence:
@@ -305,7 +345,7 @@ class BotService:
             return
         # Dedicated bot never opens a role-pick session; unclear → guide.
         if dedicated_role is not None:
-            self._reply(msg.message_id, help_text(self.cfg, msg.chat_id))
+            self._reply(msg.message_id, _soft_tip(self.cfg, msg.chat_id, dedicated_role))
             return
         s = Session(
             chat_id=msg.chat_id,
@@ -336,6 +376,8 @@ class BotService:
             "source_message": msg.message_id,
             "risk": text[:300] if any(word in text for word in ("阻塞", "风险", "延期", "卡住")) else "",
         }
+        if any(getattr(f, "key", None) == "tag" for f in (getattr(self.cfg.tables.progress, "fields", None) or [])):
+            values["tag"] = "风险" if values["risk"] else "进展"
         for key, value in self.cfg.resolve_chat_bindings(msg.chat_id, role):
             if key == "project":
                 values["module"] = value
@@ -500,6 +542,45 @@ class BotService:
         self._reply(reply_to, text)
 
     # ------------------------------------------------------------------ extraction flow
+    def _observe_command(self, msg: IncomingMessage, cmd: str) -> None:
+        if msg.sender_open_id not in self.cfg.intake.observe_admins:
+            log.info("observe.cmd_denied", chat_id=msg.chat_id, sender_open_id=msg.sender_open_id, cmd=cmd)
+            self._reply(msg.message_id, "没有权限")
+            return
+        if cmd == "开启监听":
+            self.store.set_observe(msg.chat_id, True, msg.sender_open_id)
+            reply = "已开启本群监听：识别到疑似需求时会发确认卡，提出人确认后才入池。"
+        elif cmd == "关闭监听":
+            self.store.set_observe(msg.chat_id, False, msg.sender_open_id)
+            reply = "已关闭本群监听。"
+        else:
+            on = msg.chat_id in self.cfg.intake.observed_chats or self.store.is_observed(msg.chat_id)
+            reply = "本群监听：已开启" if on else "本群监听：未开启"
+        log.info("observe.cmd", chat_id=msg.chat_id, sender_open_id=msg.sender_open_id, cmd=cmd)
+        self._reply(msg.message_id, reply)
+
+    def _observe_allow(self, msg: IncomingMessage, text: str) -> bool:
+        """Dedup + rate limit for passive confirm cards."""
+        now = self.clock()
+        key = " ".join((text or "").split())[:200]
+        if self._obs_text_seen.get((msg.chat_id, key), 0) > now - 86400:
+            log.info("observe.skip", reason="dup_text", message_id=msg.message_id)
+            return False
+        if self._obs_sender_last.get((msg.chat_id, msg.sender_open_id), 0) > now - 600:
+            log.info("observe.skip", reason="sender_cooldown", message_id=msg.message_id)
+            return False
+        recent = [t for t in self._obs_chat_cards.get(msg.chat_id, []) if t > now - 3600]
+        if len(recent) >= 5:
+            log.info("observe.skip", reason="chat_rate", message_id=msg.message_id)
+            return False
+        if self.store.sessions_for(msg.chat_id, msg.sender_open_id):
+            log.info("observe.skip", reason="pending_session", message_id=msg.message_id)
+            return False
+        self._obs_text_seen[(msg.chat_id, key)] = now
+        self._obs_sender_last[(msg.chat_id, msg.sender_open_id)] = now
+        self._obs_chat_cards[msg.chat_id] = recent + [now]
+        return True
+
     def _start(
         self,
         msg: IncomingMessage,
@@ -513,27 +594,34 @@ class BotService:
         intake: str = "record",
     ) -> None:
         source_id = source_id or msg.message_id
+        quiet = intake in ("candidate", "passive")
         if not self._permitted(msg, role):
+            if intake == "passive":
+                return
             self._reply(source_id, f"抱歉，你在这里没有使用「{role.name}」的权限。")
             return
         lookup_key = MultiTableWriter(self.writer, self.cfg.tables).key("requirements", source_id) if self.cfg.tables else source_id
         existing = self.store.get_record(lookup_key)
         if existing:
-            if intake != "candidate":
+            if not quiet:
                 self._reply_duplicate(source_id, role, existing[1])
             return
         if conv is None:
             conv = self.collector.collect(msg)
-        if intake != "candidate" and role.min_content_chars > 0 and _is_thin(body, conv.excerpt, role.min_content_chars):
-            tip = help_text(self.cfg, msg.chat_id) if self.cfg.dedicated else _auto_guide(role)
+        if intake == "passive" and role.min_content_chars > 0 and _is_thin(body, conv.excerpt, role.min_content_chars):
+            return
+        if not quiet and role.min_content_chars > 0 and _is_thin(body, conv.excerpt, role.min_content_chars):
+            tip = _soft_tip(self.cfg, msg.chat_id, role) if self.cfg.dedicated else _auto_guide(role)
             self._reply(source_id, tip)
             return
         if not body and not conv.excerpt:
+            if intake == "passive":
+                return
             req = "、".join(f.field for f in role.fields if f.required)
             self._reply(source_id, f"请在命令后附上内容，例如：{role.command} ……（需要包含：{req}）")
             return
         for old in self.store.sessions_for(msg.chat_id, msg.sender_open_id):
-            if intake != "candidate" and old.role in (role.command, PICK):
+            if not quiet and old.role in (role.command, PICK):
                 self.store.delete_session(old)
         s = Session(
             chat_id=msg.chat_id,
@@ -568,7 +656,7 @@ class BotService:
             return
         if is_cancel(text):
             self.store.delete_session(s)
-            self._reply(s.source_message_id, "已取消，未写入。", thread=True)
+            self._reply(s.source_message_id, "已取消，没有收录。", thread=True)
             return
         if is_yes(text):
             s.raw_fields["__confirmed__"] = True
@@ -623,6 +711,7 @@ class BotService:
     ) -> None:
         reply_to = s.source_message_id
         candidate = self.cfg.tables is not None and s.raw_fields.get("__intake__") == "candidate"
+        passive = s.raw_fields.get("__intake__") == "passive"
         all_people = {**s.raw_fields.get("__people__", {}), **people}
         conv = ConversationContext.from_dict(s.raw_fields.get("__ctx__"))
         raw_text = s.raw_fields.get("__raw__", s.text)
@@ -656,7 +745,7 @@ class BotService:
             t0 = time.monotonic()
             done = threading.Event()
             ack_timer = None
-            if self.cfg.ack_after_seconds > 0 and not candidate:
+            if self.cfg.ack_after_seconds > 0 and not candidate and not passive:
 
                 def _ack():
                     if not done.is_set():
@@ -672,9 +761,9 @@ class BotService:
                 self.store.audit(**audit, latency_ms=int((time.monotonic() - t0) * 1000), result=f"llm_error:{e}"[:200])
                 if s.followups:
                     s.followups.pop()
-                if candidate:
+                if candidate or passive:
                     return
-                self._reply(reply_to, "AI 字段提取暂时失败，请稍后在此话题中回复重试，或 /取消。", thread=True)
+                self._reply(reply_to, "刚才没整理好，稍后在这再回一句，或 /取消。", thread=True)
                 return
             finally:
                 done.set()
@@ -691,9 +780,16 @@ class BotService:
             log.info("chat_binding.apply", chat_id=msg.chat_id, field_key=key, value=val)
 
         if self.cfg.tables:
-            ext_fields.update(status="待分诊" if candidate else "待评审", review=bool(candidate),
+            ext_fields.update(status="待分诊" if (candidate or passive) else "待评审", review=bool(candidate or passive),
                               agent="群" if s.raw_fields.get("__chat_type__", msg.chat_type) == "group" else "其他")
         result = validate(role.fields, ext_fields, ctx)
+        if passive and not s.raw_fields.get("__confirmed__") and not s.raw_fields.get("__preview__"):
+            if not result.complete:
+                self.store.audit(**{**audit, "text": None}, fields=result.values, result="observe:incomplete")
+                return
+            self._ask_confirm(reply_to, role, s, result.values, all_people, ctx.tz, audit)
+            log.info("observe.confirm_card", message_id=s.source_message_id, sender_open_id=s.user_id)
+            return
         if candidate:
             if not result.complete:
                 self.store.audit(**audit, fields=result.values, result="candidate:incomplete")
@@ -723,8 +819,8 @@ class BotService:
             and not force_preview
             and _record_too_vague(role, ext_fields, raw_text)
         ):
-            self.store.audit(**audit, fields=result.values, result="guide:vague_extract")
-            tip = help_text(self.cfg, msg.chat_id)
+            self.store.audit(**{**audit, "text": None}, fields=result.values, result="guide:vague_extract")
+            tip = _soft_tip(self.cfg, msg.chat_id, role)
             self._reply(reply_to, tip)
             return
 
@@ -734,7 +830,7 @@ class BotService:
             names = "、".join(f.field for f in role.fields if f.key in result.missing)
             self._reply(
                 reply_to,
-                f"仍缺少必填字段：{names}，已放弃本次记录，未写入。请补全后重新发送 {role.command}。",
+                f"还缺：{names}。这次先不算了，补全后直接再说一遍需求就行。",
                 thread=True,
             )
             return
@@ -811,6 +907,9 @@ class BotService:
             user_id=s.user_id,
             source_message_id=s.source_message_id,
         )
+        if s.raw_fields.get("__intake__") == "passive" and isinstance(card, dict) and isinstance(card.get("elements"), list):
+            card["elements"].insert(0, {"tag": "div", "text": {"tag": "lark_md",
+                "content": f"<at id={s.user_id}></at> 这条像是一条需求，确认要收录吗？（仅提出人可确认）"}})
         ask_id = self._reply_card(reply_to, card, thread=True)
         if not ask_id:
             lines = preview_lines(role, values, people, tz)
@@ -833,15 +932,20 @@ class BotService:
             return
         self.store.delete_session(s)
         self.store.audit(**audit, fields=values, record_id=wr.record_id, result="duplicate" if wr.duplicated else "ok")
-        self._reply_success(
+        card = success_card(role, values, people, ctx.tz, wr.url, duplicated=wr.duplicated)
+        # Card-action confirm path: return receipt via callback (toast+card) instead of a
+        # second reply_card, so we ACK within Feishu/xfchat's ~3s window (else client
+        # shows code 300000 even though the row was already written).
+        if getattr(self, "_card_action_receipt", False):
+            self._last_card_receipt = card
+            return
+        thread = bool(s.followups) or s.raw_fields.get("__phase__") == PHASE_CONFIRM
+        if self._reply_card(reply_to, card, thread=thread):
+            return
+        self._reply(
             reply_to,
-            role,
-            values,
-            people,
-            ctx.tz,
-            wr.url,
-            wr.duplicated,
-            thread=bool(s.followups) or s.raw_fields.get("__phase__") == PHASE_CONFIRM,
+            success_text(role, values, people, ctx.tz, wr.url, duplicated=wr.duplicated),
+            thread=thread,
         )
 
     def _reply_success(self, reply_to, role, values, people, tz, url, duplicated=False, thread=False) -> None:
@@ -854,7 +958,7 @@ class BotService:
         card = {
             "config": {"wide_screen_mode": True},
             "header": {
-                "title": {"tag": "plain_text", "content": f"🔁 这条消息已记录过「{role.name}」"},
+                "title": {"tag": "plain_text", "content": "🔁 这条已经记过了"},
                 "template": "orange",
             },
             "elements": [
@@ -875,7 +979,7 @@ class BotService:
         }
         if self._reply_card(reply_to, card):
             return
-        self._reply(reply_to, f"🔁 这条消息已记录过「{role.name}」\n{url}")
+        self._reply(reply_to, f"🔁 这条已经记过了\n{url}")
 
     # ------------------------------------------------------------------ misc
 
@@ -887,7 +991,7 @@ class BotService:
             return
         if is_cancel(text):
             self.store.delete_session(s)
-            self._reply(s.source_message_id, "已取消，未写入。", thread=True)
+            self._reply(s.source_message_id, "已取消，没有收录。", thread=True)
             return
         if not text:
             self._reply(msg.message_id, "请直接回复要改的字段，例如「优先级改成 P0」或「标题：xxx」。", thread=True)
@@ -910,7 +1014,29 @@ class BotService:
         try:
             self.api.add_reaction(message_id, self.cfg.react_emoji or "Get")
         except Exception as e:
-            log.info("react.skipped", error=str(e)[:200])
+            log.info("react.skipped", emoji=self.cfg.react_emoji, error=str(e)[:200])
+            if (self.cfg.react_emoji or "Get") != "Get":
+                try:
+                    self.api.add_reaction(message_id, "Get")
+                except Exception as e2:
+                    log.info("react.fallback_skipped", error=str(e2)[:200])
+
+    BOT_ADDED_TEXT = (
+        "你好，我是需求小助手。\n"
+        "· 提需求：@我 说需求标题和背景，确认后入池；也可私聊我。\n"
+        "· 查进展：@我 问「XX需求进展」。\n"
+        "· 本群默认不监听未@的消息；白名单成员 @我「开启监听」后会识别疑似需求并请提出人确认，@我「关闭监听」即停止，「监听状态」可查看。"
+    )
+
+    def handle_bot_added(self, chat_id: str) -> None:
+        """Post a short usage note when the bot joins a group (best-effort)."""
+        if not chat_id:
+            return
+        try:
+            self.api.send_text(chat_id, self.BOT_ADDED_TEXT, receive_id_type="chat_id")
+            log.info("bot_added.intro_sent", chat_id=chat_id)
+        except Exception as e:
+            log.info("bot_added.intro_skipped", error=str(e)[:200])
 
     def handle_card_action(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Handle interactive card button (confirm / cancel / modify). Returns toast/card update dict.
@@ -928,7 +1054,7 @@ class BotService:
                 datetime.fromtimestamp(self.clock(), ZoneInfo(self.cfg.timezone)).date(),
             )
         if not isinstance(value, dict) or value.get("kind") != "confirm":
-            return {"toast": {"type": "info", "content": "未知操作"}}
+            return {}  # hide unknown card noise
         op = value.get("action")
         chat_id = str(value.get("chat_id") or "")
         user_id = str(value.get("user_id") or "")
@@ -936,14 +1062,17 @@ class BotService:
         source = str(value.get("source") or "")
         operator = ((payload.get("operator") or {}) if isinstance(payload, dict) else {}).get("open_id") or ""
         if not operator or not user_id or operator != user_id:
-            return {"toast": {"type": "error", "content": "只有发起确认的人可以操作此卡片"}}
+            ps = self.store.get_session(chat_id, user_id, role_cmd) if user_id else None
+            if ps is not None and ps.raw_fields.get("__intake__") == "passive":
+                return {"toast": {"type": "error", "content": "仅提出人可确认"}}
+            return {"toast": {"type": "error", "content": "只有本人可以操作这张卡片"}}
         s = self.store.get_session(chat_id, user_id, role_cmd)
         if s is None or s.source_message_id != source:
-            return {"toast": {"type": "info", "content": "确认已过期或已处理"}}
+            return {}  # hide expired/processed noise
         role = self.cfg.find_role(s.role)
         if role is None:
             self.store.delete_session(s)
-            return {"toast": {"type": "error", "content": "角色已失效"}}
+            return {}
 
         # Build a synthetic message so we can reuse _process / write helpers
         msg = IncomingMessage(
@@ -959,24 +1088,64 @@ class BotService:
 
         if op == "cancel":
             self.store.delete_session(s)
-            self._reply(source, "已取消，未写入。", thread=True)
-            return {"toast": {"type": "info", "content": "已取消"}}
+            cancelled = {
+                "config": {"wide_screen_mode": True},
+                "header": {"title": {"tag": "plain_text", "content": "已取消"}, "template": "grey"},
+                "elements": [{"tag": "div", "text": {"tag": "plain_text", "content": "没有收录。"}}],
+            }
+            return {
+                "toast": {"type": "info", "content": "已取消", "i18n": {"zh_cn": "已取消"}},
+                "card": {"type": "raw", "data": cancelled},
+            }
         if op == "modify":
             s.raw_fields["__phase__"] = PHASE_MODIFY
             s.expires_at = self.clock() + self.cfg.session.timeout_minutes * 60
             self.store.save_session(s)
-            self._reply(
-                source,
-                "请在本话题里回复要修改的内容，例如「优先级改成 P0」或「标题：新标题」。改完后我会再次请你确认。/取消 放弃。",
-                thread=True,
-            )
-            return {"toast": {"type": "info", "content": "请在话题里回复修改"}}
+            modify_card = {
+                "config": {"wide_screen_mode": True},
+                "header": {"title": {"tag": "plain_text", "content": "请修改"}, "template": "blue"},
+                "elements": [
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": (
+                                "直接回复要改的内容，例如「优先级改成 P0」。"
+                                "改完我会再请你确认；不想继续回 /取消。"
+                            ),
+                        },
+                    }
+                ],
+            }
+            return {
+                "toast": {
+                    "type": "info",
+                    "content": "请在话题里回复修改",
+                    "i18n": {"zh_cn": "请在话题里回复修改"},
+                },
+                "card": {"type": "raw", "data": modify_card},
+            }
         if op == "confirm":
             s.raw_fields["__confirmed__"] = True
             # Avoid treating card event as a duplicate of the original @ message
-            self._process(msg, role, s, people, skip_extract=True)
-            return {"toast": {"type": "success", "content": "已确认写入"}}
-        return {"toast": {"type": "info", "content": f"未知动作 {op}"}}
+            self._card_action_receipt = True
+            self._last_card_receipt = None
+            t0 = time.monotonic()
+            try:
+                self._process(msg, role, s, people, skip_extract=True)
+            finally:
+                self._card_action_receipt = False
+            receipt = self._last_card_receipt
+            self._last_card_receipt = None
+            ms = int((time.monotonic() - t0) * 1000)
+            log.info("card.confirm_done", ms=ms, has_receipt=isinstance(receipt, dict))
+            out: dict[str, Any] = {
+                "toast": {"type": "success", "content": "已收录", "i18n": {"zh_cn": "已收录"}},
+            }
+            if isinstance(receipt, dict):
+                out["card"] = {"type": "raw", "data": receipt}
+            return out
+        return {}
 
     def expire_sessions(self) -> int:
         expired = self.store.pop_expired_sessions()
@@ -985,7 +1154,7 @@ class BotService:
             name = role.name if role else "记录"
             self._reply(
                 s.source_message_id,
-                f"已超时取消，「{name}」本次记录未写入。可重新 @我 再提。",
+                f"这条确认超时了，没有收录。重新跟我说一遍就行。",
                 thread=True,
             )
         return len(expired)

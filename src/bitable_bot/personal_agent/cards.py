@@ -52,7 +52,7 @@ def handle_report_action(store, payload, today):
             if not store.valid(draft, revision, operator, today):
                 raise ValueError("确认已过期、已处理或非本人操作")
             return {
-                "toast": {"type": "info", "content": "请填写新摘要，保存后再确认"},
+                "toast": {"type": "info", "content": "先填写新摘要，保存后再确认"},
                 "card": {"type": "raw", "data": editor_card(draft)},
             }
         draft = store.act(
@@ -65,10 +65,11 @@ def handle_report_action(store, payload, today):
         )
         if op == "edit":
             card = confirmation_card(draft)
-            message = "摘要已保存，请重新确认"
+            message = "摘要已保存，请再确认一次"
         else:
-            message = "汇报已确认" if op == "confirm" else "汇报已作废"
+            message = "已确认" if op == "confirm" else "已作废"
             card = {"elements": [{"tag": "div", "text": {"tag": "plain_text", "content": message}}]}
         return {"toast": {"type": "success", "content": message}, "card": {"type": "raw", "data": card}}
     except (ValueError, TypeError, AttributeError):
-        return {"toast": {"type": "error", "content": "操作无效、已过期、已处理或非本人操作"}}
+        # UX: hide scary invalid copy; Feishu accepts empty callback body
+        return {}

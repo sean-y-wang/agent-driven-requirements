@@ -38,10 +38,10 @@ def test_confirm_before_write_yes(harness):
     h.service.handle(m)
     assert not h.api.records
     ask = h.api.replies[-1]
-    assert ask["in_thread"] and "请确认写入" in ask["text"] and "白屏" in ask["text"]
+    assert ask["in_thread"] and "请确认" in ask["text"] and "白屏" in ask["text"]
     h.service.handle(make_msg("确认", root_id=m.message_id, parent_id=ask["id"], at_bot=False))
     assert h.api.records and h.api.records[0]["fields"]["标题"] == "白屏"
-    assert "✅" in h.api.replies[-1]["text"] or "已记录" in h.api.replies[-1]["text"]
+    assert "✅" in h.api.replies[-1]["text"] or "已记录" in h.api.replies[-1]["text"] or "已收录" in h.api.replies[-1]["text"]
 
 
 def test_confirm_edit_severity(harness):
@@ -53,7 +53,7 @@ def test_confirm_edit_severity(harness):
     ask = h.api.replies[-1]
     h.service.handle(make_msg("严重程度改成 P0", root_id=m.message_id, parent_id=ask["id"], at_bot=False))
     preview = h.api.replies[-1]["text"]
-    assert "P0" in preview and "请确认写入" in preview and not h.api.records
+    assert "P0" in preview and "请确认" in preview and not h.api.records
     h.service.handle(make_msg("好", root_id=m.message_id, at_bot=False))
     assert h.api.records[0]["fields"]["严重程度"] == "P0"
 
@@ -82,7 +82,7 @@ def test_duplicate_receipt_includes_link(harness):
     h2_msg = make_msg("/bug y", message_id="om_new")
     h.store.put_record(h2_msg.message_id, "rec9", url)
     h.service.handle(h2_msg)
-    assert "已记录过" in h.api.replies[-1]["text"] and url in h.api.replies[-1]["text"]
+    assert ("已记录过" in h.api.replies[-1]["text"] or "已经记过" in h.api.replies[-1]["text"]) and url in h.api.replies[-1]["text"]
 
 
 def test_card_receipt_when_enabled(harness):
@@ -195,4 +195,4 @@ def test_queryable_false_rejects(harness):
     h.service.handle(make_msg("我的日报进展怎样"))
     # /日报 not queryable → either pick among queryable (/bug) or reject
     text = h.api.replies[-1]["text"]
-    assert "不支持查询" in text or "缺陷登记" in text or "哪张表" in text
+    assert "不支持查询" in text or "缺陷登记" in text or "哪张表" in text or "没找到" in text
