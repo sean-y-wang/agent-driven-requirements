@@ -283,6 +283,12 @@ def normalize_value(spec: FieldSpec, v: Any, ctx: Context) -> Any:
         return _user(v, ctx)
     if t == "url":
         return _url(v)
+    if t == "attachment":
+        items = v if isinstance(v, list) else [v]
+        out = [{"file_token": it["file_token"]} for it in items if isinstance(it, dict) and it.get("file_token")]
+        if not out:
+            raise Missing()
+        return out
     raise Missing(f"unsupported type {t}")  # pragma: no cover
 
 

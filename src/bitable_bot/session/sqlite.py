@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS observe_chats (
 CREATE TABLE IF NOT EXISTS guided_chats (
   chat_id TEXT PRIMARY KEY, guided_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS member_dept (
+  open_id TEXT PRIMARY KEY, dept TEXT NOT NULL, updated_at REAL NOT NULL
+);
 """
 
 
@@ -140,6 +143,19 @@ class Store:
         with self._lock:
             r = self._db.execute("SELECT 1 FROM guided_chats WHERE chat_id=?", (chat_id,)).fetchone()
         return r is not None
+
+    # ---- 提出部门本地缓存（成员配置表不可写/不可读时兜底；空列表 = 用户选择跳过） ----
+    def get_member_dept(self, open_id: str) -> list[str] | None:
+        with self._lock:
+            r = self._db.execute("SELECT dept FROM member_dept WHERE open_id=?", (open_id,)).fetchone()
+        return json.loads(r[0]) if r else None
+
+    def set_member_dept(self, open_id: str, dept: list[str]) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT OR REPLACE INTO member_dept(open_id, dept, updated_at) VALUES (?,?,?)",
+                (open_id, json.dumps(list(dept), ensure_ascii=False), self.clock()),
+            )
 
     # ---- per-chat passive observe switch (persistent) -----------------
     def set_observe(self, chat_id: str, enabled: bool, operator: str = "") -> None:

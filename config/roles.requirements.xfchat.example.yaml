@@ -171,6 +171,32 @@ tables:
       type: user
       required: false
       default: $sender
+    - key: dept
+      field: 提出部门
+      type: multi_select
+      llm: false
+      description: 第一次提需时问一次，之后沿用（成员配置表 / 本地缓存）
+      options:
+      - value: 消费者-生态
+        synonyms: [生态]
+      - value: 消费者-办公
+        synonyms: [办公]
+      - value: 汽车座舱
+        synonyms: [汽车, 座舱]
+      - value: 输入法
+      - value: 研究院
+    - key: assignee
+      field: 需求受理人
+      type: user
+      llm: false
+    - key: plan_date
+      field: 计划上线日期
+      type: date
+      llm: false
+    - key: attachments
+      field: 附件
+      type: attachment
+      llm: false
     - &id001
       key: status
       field: 状态
@@ -238,7 +264,35 @@ tables:
     - key: participants
       field: 参与人
       type: user
-    - *id001
+    - key: status
+      field: 状态
+      type: single_select
+      options:
+      - value: 待分诊
+      - value: 待评审
+      - value: 进行中
+      - value: 阻塞
+      - value: 已完成
+      - value: 已关闭
+      - value: 待排期
+      - value: 待开发
+      - value: 开发中
+      - value: 测试中
+      - value: 待验收
+      - value: 已上线
+      - value: 已暂停
+    - key: product
+      field: 产品
+      type: user
+    - key: dev
+      field: 开发
+      type: user
+    - key: test
+      field: 测试
+      type: user
+    - key: plan_date
+      field: 计划上线日期
+      type: date
   progress:
     app_token: ${REQUIREMENTS_APP_TOKEN:-bascnEXAMPLE}
     table_id: ${PROGRESS_TABLE_ID:-tblPROGRESS}
@@ -290,6 +344,42 @@ tables:
     - key: repository
       field: 仓库地址
       type: text
+  members:
+    app_token: ${REQUIREMENTS_APP_TOKEN:-bascnEXAMPLE}
+    table_id: ${MEMBERS_TABLE_ID:-tblMEMBERS}
+    fields:
+    - key: name
+      field: 姓名
+      type: text
+    - key: member
+      field: 成员
+      type: user
+    - key: role
+      field: 角色
+      type: single_select
+      options:
+      - value: 管理者
+      - value: 产品运营
+      - value: 参与者
+      - value: 需求方
+    - key: dept
+      field: 提出部门
+      type: single_select
+      options:
+      - value: 消费者-生态
+      - value: 消费者-办公
+      - value: 汽车座舱
+      - value: 输入法
+      - value: 研究院
+    - key: note
+      field: 备注
+      type: text
+# 延期通知：计划上线日期已过且未上线 → 私聊需求受理人（无则提出人账号）；每条记录每个计划日期只提醒一次
+overdue_notify:
+  enabled: false
+  dry_run: true
+  hour: 10
+  done_statuses: [已上线, 已完成, 已关闭]
 intake:
   # 安全默认：关闭群旁路采集。要开群进展时必须同时 true + 非空 observed_chats，
   # 且应用已开「读取群全部消息」；不要在未配置目标群时盲开。

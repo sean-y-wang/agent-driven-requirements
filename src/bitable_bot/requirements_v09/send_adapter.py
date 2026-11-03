@@ -405,14 +405,14 @@ def main(argv: list[str] | None = None) -> int:
             if args.input:
                 data = ReportInput.model_validate_json(args.input.read_text())
             else:
-                if not args.members:
-                    raise ValueError("读取真实进展表需 --members")
                 from ..config import load_config
                 from .user_api import UserAPI
 
                 cfg = load_config(args.config)
                 if not cfg.tables:
                     raise ValueError("汇报需要 0.9 四表配置")
+                if not args.members and cfg.tables.members is None:
+                    raise ValueError("读取真实进展表需 --members 或配置成员配置表（tables.members）")
                 timezone = args.timezone or cfg.timezone
                 table = cfg.tables.progress
                 read_as = (os.environ.get("REPORT_READ_AS") or "user").lower()
@@ -432,7 +432,17 @@ def main(argv: list[str] | None = None) -> int:
                 from .reports import entries_from_records
 
                 entries = entries_from_records(api_user.list_all_records(table.app_token, table.table_id), table)
-                data = ReportInput(members=json.loads(args.members.read_text()), progress=entries)
+                members = None
+                if cfg.tables.members is not None:
+                    # 优先读「成员配置」表（管理者/产品运营/参与者），读失败或为空时回退 JSON 名单
+                    from .prd import MemberDirectory
+
+                    members = MemberDirectory(api_user, cfg.tables, fallback_json=args.members).report_members() or None
+                if members is None:
+                    if not args.members:
+                        raise ValueError("成员配置表为空且未提供 --members")
+                    members = json.loads(args.members.read_text())
+                data = ReportInput(members=members, progress=entries)
             from datetime import datetime
             from zoneinfo import ZoneInfo
 

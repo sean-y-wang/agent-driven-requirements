@@ -176,6 +176,10 @@ def main() -> int:
     )
     service = build_service(settings, cfg, lark_client)
     threading.Thread(target=_sweeper, args=(service,), daemon=True, name="sweeper").start()
+    if cfg.tables and cfg.overdue_notify.enabled:
+        from .requirements_v09.prd import overdue_loop
+
+        threading.Thread(target=overdue_loop, args=(service,), daemon=True, name="overdue").start()
     start_dashboard(settings, service, dict(os.environ))
     log.info(
         "bot.starting",

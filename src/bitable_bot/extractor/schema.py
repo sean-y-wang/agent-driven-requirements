@@ -31,7 +31,7 @@ def field_schema(spec: FieldSpec) -> dict[str, Any]:
 
 def llm_fields(role: Role) -> list[FieldSpec]:
     """Fields the LLM may fill (system-filled traceability fields are excluded)."""
-    return [f for f in role.fields if not is_auto(f)]
+    return [f for f in role.fields if not is_auto(f) and f.llm and f.type != "attachment"]
 
 
 def build_schema(role: Role) -> dict[str, Any]:

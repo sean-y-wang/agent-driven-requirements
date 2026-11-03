@@ -25,6 +25,15 @@ from .extractor import ExtractionError, Extractor, build_messages, classify
 from .extractor.intent import looks_like_help, looks_like_query
 from .query import QueryService
 from .receipt import confirm_card, followup_text, preview_lines, query_card, success_card, success_text
+from .requirements_v09.prd import (
+    MemberDirectory,
+    TaskDesk,
+    dept_question,
+    extract_attachments,
+    parse_dept,
+    parse_task_command,
+    transfer_attachments,
+)
 from .requirements_v09.writer import MultiTableWriter
 from .router import IncomingMessage, Kind, bot_mentioned, clean_text, extract_text, help_text, route
 from .session import Session, Store
@@ -36,6 +45,7 @@ log = structlog.get_logger(__name__)
 PICK = "__pick__"
 PHASE_CONFIRM = "confirm"
 PHASE_MODIFY = "modify"  # waiting for free-text field edits after card 「修改」
+PHASE_DEPT = "dept"  # first-time requester: waiting for 提出部门
 PHASE_GUIDE = "guide"  # unused for session (guide does not open a session)
 _HIDDEN_IN_RECEIPT = {"$context", "$raw_text"}
 
@@ -126,6 +136,18 @@ class BotService:
         self._obs_sender_last: dict[tuple[str, str], float] = {}
         self._obs_chat_cards: dict[str, list[float]] = {}
         self._obs_text_seen: dict[tuple[str, str], float] = {}
+        # PRD batch 1: 成员配置 / 我的任务 (only with 0.9 tables)
+        self.members = MemberDirectory(api, cfg.tables, store, clock=clock) if cfg.tables else None
+        self.tasks = TaskDesk(api, cfg.tables, cfg.timezone, getattr(writer, "base_url", "")) if cfg.tables else None
+
+    def _spec_by_type(self, role: Role | None, *, key: str | None = None, ftype: str | None = None):
+        for f in (role.fields if role else []):
+            if (key and f.key == key) or (ftype and f.type == ftype):
+                return f
+        return None
+
+    def _attach_spec(self):
+        return self._spec_by_type(self.cfg.primary_role() if self.cfg.dedicated else None, ftype="attachment")
 
     # ------------------------------------------------------------------ entry
     def is_duplicate(self, msg: IncomingMessage) -> bool:
@@ -188,6 +210,9 @@ class BotService:
                 except Exception:
                     log.exception("observe.failed", message_id=msg.message_id)
             return
+        if msg.message_type in ("image", "file", "media") and self.cfg.tables and self._attach_spec() is not None:
+            self._attach_to_session(msg, thread_s or (sessions[0] if sessions else None))
+            return
         if msg.message_type not in ("text", "post"):
             self._reply(msg.message_id, "暂只支持文字消息。发送 /help 查看用法。")
             return
@@ -199,6 +224,13 @@ class BotService:
                 and (text or "").strip(" 。!！") in ("开启监听", "关闭监听", "监听状态")):
             self._observe_command(msg, (text or "").strip(" 。!！"))
             return
+        if p2p and self.tasks is not None and thread_s is None and not (
+            sessions and sessions[0].raw_fields.get("__phase__") == PHASE_DEPT
+        ):
+            tcmd = parse_task_command(text, self.tasks.statuses())
+            if tcmd is not None:
+                self._task_command(msg, tcmd)
+                return
         # Fresh @ / p2p (not a thread follow-up): optional 「收到」reaction
         if addressed and thread_s is None and self.cfg.react_on_mention:
             self._react(msg.message_id)
@@ -233,6 +265,8 @@ class BotService:
                 self._detect(msg, text, people)
             elif s.role == PICK:
                 self._continue_pick(msg, s, text, people)
+            elif s.raw_fields.get("__phase__") == PHASE_DEPT:
+                self._continue_dept(msg, s, text, people)
             elif s.raw_fields.get("__phase__") == PHASE_CONFIRM:
                 self._continue_confirm(msg, s, text, people)
             elif s.raw_fields.get("__phase__") == PHASE_MODIFY:
@@ -631,6 +665,10 @@ class BotService:
             text=body,
             raw_fields={"__ctx__": conv.to_dict(), "__people__": people, "__raw__": raw_text, "__intake__": intake, "__chat_type__": msg.chat_type},
         )
+        if self.cfg.tables and self._attach_spec() is not None:
+            items = extract_attachments(msg.message_type, msg.content, msg.message_id)
+            if items:
+                s.raw_fields["__attachments__"] = items
         self._process(msg, role, s, people)
 
     def _continue_followup(self, msg: IncomingMessage, s: Session, text: str, people: dict[str, str]) -> None:
@@ -782,6 +820,12 @@ class BotService:
         if self.cfg.tables:
             ext_fields.update(status="待分诊" if (candidate or passive) else "待评审", review=bool(candidate or passive),
                               agent="群" if s.raw_fields.get("__chat_type__", msg.chat_type) == "group" else "其他")
+        dept_spec = self._spec_by_type(role, key="dept") if self.cfg.tables else None
+        dept = s.raw_fields.get("__dept__")
+        if dept_spec is not None and dept is None and self.members is not None:
+            dept = self.members.dept_of(s.user_id)
+        if dept_spec is not None and dept:
+            ext_fields["dept"] = dept
         result = validate(role.fields, ext_fields, ctx)
         if passive and not s.raw_fields.get("__confirmed__") and not s.raw_fields.get("__preview__"):
             if not result.complete:
@@ -805,6 +849,9 @@ class BotService:
         if result.complete or (s.raw_fields.get("__skipped_optional__") and not result.missing):
             # confirm-before-write
             need_confirm = (role.confirm_before_write or self.cfg.tables is not None) and not s.raw_fields.get("__confirmed__")
+            if (need_confirm or force_preview) and dept_spec is not None and dept is None and not passive:
+                self._ask_dept(reply_to, role, s, result.values, all_people, dept_spec, audit)
+                return
             if need_confirm or force_preview:
                 self._ask_confirm(reply_to, role, s, result.values, all_people, ctx.tz, audit)
                 return
@@ -920,6 +967,13 @@ class BotService:
         self.store.audit(**audit, fields=values, result="confirm")
 
     def _do_write(self, msg, role, s, values, people, ctx, audit, reply_to) -> None:
+        att_spec = self._spec_by_type(role, ftype="attachment") if self.cfg.tables else None
+        items = s.raw_fields.get("__attachments__") or []
+        if att_spec is not None and items:
+            tokens = transfer_attachments(self.api, self.cfg.tables.requirements.app_token, items)
+            log.info("attachment.transferred", ok=len(tokens), total=len(items))
+            if tokens:
+                values = {**values, att_spec.key: tokens}
         try:
             if self.cfg.tables:
                 wr = MultiTableWriter(self.writer, self.cfg.tables).write("requirements", values, s.source_message_id)
@@ -981,6 +1035,71 @@ class BotService:
             return
         self._reply(reply_to, f"🔁 这条已经记过了\n{url}")
 
+    # ------------------------------------------------------------------ PRD batch 1
+    def _ask_dept(self, reply_to, role, s, values, people, spec, audit) -> None:
+        kept = {k: v for k, v in s.raw_fields.items() if k.startswith("__")}
+        s.raw_fields = {**kept, **values, "__phase__": PHASE_DEPT, "__people__": people}
+        s.expires_at = self.clock() + self.cfg.session.timeout_minutes * 60
+        ask_id = self._reply(reply_to, dept_question(spec), thread=True)
+        if ask_id:
+            s.ask_message_ids.append(ask_id)
+        self.store.save_session(s)
+        self.store.audit(**{**audit, "text": None}, fields=values, result="ask_dept")
+
+    def _continue_dept(self, msg: IncomingMessage, s: Session, text: str, people: dict[str, str]) -> None:
+        role = self.cfg.find_role(s.role)
+        spec = self._spec_by_type(role, key="dept")
+        if role is None or spec is None:
+            self.store.delete_session(s)
+            return
+        if is_cancel(text):
+            self.store.delete_session(s)
+            self._reply(s.source_message_id, "已取消，没有收录。", thread=True)
+            return
+        if is_skip(text):
+            dept: list[str] = []
+        else:
+            dept = parse_dept(text, spec) or []
+            if not dept:
+                self._reply(msg.message_id, "没认出部门，请回复序号（如「2」）或部门名；不想填回「跳过」。", thread=True)
+                return
+        s.raw_fields["__dept__"] = dept
+        if dept:
+            s.raw_fields["dept"] = dept
+        s.raw_fields["__phase__"] = PHASE_CONFIRM
+        if self.members is not None:
+            name = (s.raw_fields.get("__ctx__") or {}).get("sender_name") or ""
+            self.members.remember_dept(s.user_id, name, dept)
+        self._process(msg, role, s, people, skip_extract=True, force_preview=True)
+
+    def _attach_to_session(self, msg: IncomingMessage, s: Session | None) -> None:
+        items = extract_attachments(msg.message_type, msg.content, msg.message_id)
+        thread = msg.chat_type != "p2p"
+        if not items:
+            return
+        if s is None or s.role == PICK:
+            if msg.chat_type == "p2p":
+                self._reply(msg.message_id, "收到附件。先跟我说需求内容，确认收录前再发图片或文件，我会一起存进「附件」。")
+            return
+        s.raw_fields.setdefault("__attachments__", []).extend(items)
+        self.store.save_session(s)
+        n = len(s.raw_fields["__attachments__"])
+        self._reply(msg.message_id, f"📎 已收到附件（共 {n} 个），收录时会一并存入「附件」。", thread=thread)
+
+    def _task_command(self, msg: IncomingMessage, cmd) -> None:
+        try:
+            if cmd.kind == "list":
+                text = self.tasks.list_text(msg.sender_open_id)
+            else:
+                text = self.tasks.set_status(msg.sender_open_id, cmd.target, cmd.status)
+            result = f"task:{cmd.kind}"
+        except Exception as e:
+            log.exception("task.command_failed")
+            text, result = f"读取任务表失败，请稍后再试（{str(e)[:80]}）。", f"task:{cmd.kind}:error"
+        self.store.audit(chat_id=msg.chat_id, sender=msg.sender_open_id, command="task", result=result,
+                         fields={"target": cmd.target, "status": cmd.status})
+        self._reply(msg.message_id, text)
+
     # ------------------------------------------------------------------ misc
 
     def _continue_modify(self, msg: IncomingMessage, s: Session, text: str, people: dict[str, str]) -> None:
@@ -1024,7 +1143,7 @@ class BotService:
     BOT_ADDED_TEXT = (
         "你好，我是需求小助手。\n"
         "· 提需求：@我 说需求标题和背景，确认后入池；也可私聊我。\n"
-        "· 查进展：@我 问「XX需求进展」。\n"
+        "· 查进展：@我 问「XX需求进展」；私聊发「我的任务」可查看并修改分给自己的任务状态。\n"
         "· 本群默认不监听未@的消息；白名单成员 @我「开启监听」后会识别疑似需求并请提出人确认，@我「关闭监听」即停止，「监听状态」可查看。"
     )
 

@@ -6,7 +6,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-FieldType = Literal["text", "number", "single_select", "multi_select", "date", "checkbox", "user", "url", "phone"]
+FieldType = Literal[
+    "text", "number", "single_select", "multi_select", "date", "checkbox", "user", "url", "phone", "attachment"
+]
 
 
 class Option(BaseModel):
@@ -26,6 +28,8 @@ class FieldSpec(BaseModel):
     max: float | None = None
     precision: int | None = None
     max_len: int | None = None
+    # False = system-managed (e.g. 提出部门 asked once / 附件 uploaded by the bot); never sent to the LLM.
+    llm: bool = True
 
     @field_validator("key")
     @classmethod
@@ -231,7 +235,7 @@ class SessionConfig(BaseModel):
 STATUSES = ("待分诊", "待评审", "进行中", "阻塞", "已完成", "已关闭")
 AGENTS = ("Claude Code", "Codex", "Orca", "群", "其他")
 MODULES = ("AIPaaS 4.0", "AICloud Labs")
-TableName = Literal["requirements", "tasks", "progress", "modules"]
+TableName = Literal["requirements", "tasks", "progress", "modules", "members"]
 
 
 class TableSpec(Target):
@@ -255,11 +259,25 @@ class Tables(BaseModel):
     tasks: TableSpec
     progress: TableSpec
     modules: TableSpec
+    # 成员配置（可选）：成员/角色/提出部门。未配置或读失败时回退 JSON 名单。
+    members: TableSpec | None = None
 
     def get(self, name: TableName) -> TableSpec:
-        if name not in ("requirements", "tasks", "progress", "modules"):
+        if name not in ("requirements", "tasks", "progress", "modules", "members"):
             raise ValueError(f"unknown table: {name}")
-        return getattr(self, name)
+        spec = getattr(self, name)
+        if spec is None:
+            raise ValueError(f"table not configured: {name}")
+        return spec
+
+
+class OverdueNotifyConfig(BaseModel):
+    """计划上线日期已过但未上线 → 私聊受理人（无则提出人）。每条记录每个计划日期只提醒一次。"""
+
+    enabled: bool = False
+    dry_run: bool = True  # 只记日志不发消息；确认名单无误后再关
+    hour: int = Field(10, ge=0, le=23)  # 本地时区每天几点后扫描
+    done_statuses: list[str] = Field(default_factory=lambda: ["已上线", "已完成", "已关闭"])
 
 
 class IntakeConfig(BaseModel):
@@ -296,6 +314,7 @@ class AppConfig(BaseModel):
     intake: IntakeConfig = Field(default_factory=IntakeConfig)
     chat_field_bindings: list[ChatFieldBinding] = Field(default_factory=list)
     remote_config: RemoteConfig = Field(default_factory=RemoteConfig)
+    overdue_notify: OverdueNotifyConfig = Field(default_factory=OverdueNotifyConfig)
 
     @model_validator(mode="before")
     @classmethod
