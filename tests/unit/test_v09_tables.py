@@ -47,7 +47,7 @@ def test_observation_requires_admin_permission_and_chat_scope():
         type(load_config(CONFIG)).model_validate(cfg)
 
 
-def test_table_binding_is_single_source_and_cannot_disable_confirm():
+def test_table_binding_is_single_source_and_respects_confirm_flag():
     from bitable_bot.config.models import AppConfig
 
     raw = load_config(CONFIG, env={}).model_dump()
@@ -57,7 +57,8 @@ def test_table_binding_is_single_source_and_cannot_disable_confirm():
     cfg = AppConfig.model_validate(raw)
     assert cfg.roles[0].target.table_id == cfg.tables.requirements.table_id
     assert cfg.roles[0].fields[0].field == "自定义需求标题"
-    assert cfg.roles[0].confirm_before_write
+    # PRD：不再强制 confirm_before_write=True
+    assert cfg.roles[0].confirm_before_write is False
 
 
 def test_sdk_update_and_full_pagination():

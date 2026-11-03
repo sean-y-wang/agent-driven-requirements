@@ -87,7 +87,7 @@ def test_requirements_config_shape(req_cfg):
     assert req_cfg.context.recent_messages == 5
     role = req_cfg.roles[0]
     assert role.name == "需求小助手"
-    assert role.confirm_before_write is True
+    assert role.confirm_before_write is False  # PRD：明确提需直接入池
     assert role.query.max_reply == 2
     assert req_cfg.primary_role() is role
     assert "需求小助手" in help_text(req_cfg)
@@ -108,6 +108,7 @@ roles:
 
 
 def test_react_and_confirm_card_flow(req_harness):
+    req_harness.service.cfg.roles[0].confirm_before_write = True
     h = req_harness
     h.provider.outputs = [
         {
@@ -162,6 +163,7 @@ def test_react_and_confirm_card_flow(req_harness):
 
 
 def test_card_cancel_and_modify(req_harness):
+    req_harness.service.cfg.roles[0].confirm_before_write = True
     h = req_harness
     h.provider.outputs = [
         {

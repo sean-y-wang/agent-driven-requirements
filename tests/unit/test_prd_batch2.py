@@ -1,3 +1,4 @@
+from pathlib import Path
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
@@ -121,12 +122,33 @@ def test_links_parsing():
     assert prd2.links({"link_record_ids": ["recA"]}) == ["recA"]
 
 
-def test_ops_flags_default_off():
-    cfg = load_config("config/roles.requirements.xfchat.example.yaml", {})
-    assert cfg.ops_review.enabled is False and cfg.schedule_notify.dry_run is True
-    assert cfg.schedule_notify.assign_brief is False and cfg.weekly_doc.enabled is False
-    assert cfg.reports.manager_schedule == "mon09" and cfg.reports.risk_to_ops is False
+def test_ops_flags_prd_example_on_and_model_defaults_safe():
+    """xfchat example 按 t635u 拍板打开；未写配置时模型默认仍安全关闭。"""
+    from bitable_bot.config import load_config
+    from bitable_bot.config.models import AppConfig, OpsReviewConfig, ScheduleNotifyConfig, ReportsConfig, WeeklyDocConfig
 
+    cfg = load_config(Path("config/roles.requirements.xfchat.example.yaml"), env={
+        "REQUIREMENTS_APP_TOKEN": "bascnEXAMPLE",
+        "REQUIREMENTS_TABLE_ID": "t1",
+        "TASKS_TABLE_ID": "t2",
+        "PROGRESS_TABLE_ID": "t3",
+        "MODULES_TABLE_ID": "t4",
+        "MEMBERS_TABLE_ID": "t5",
+        "EXTERNAL_TABLE_ID": "t6",
+        "PRIVATE_LLM_KEY": "x",
+    })
+    assert cfg.ops_review.enabled is True
+    assert cfg.schedule_notify.dry_run is False
+    assert cfg.overdue_notify.dry_run is False
+    assert cfg.reports.risk_to_ops is True
+    assert cfg.reports.manager_schedule == "fri14"
+    assert cfg.weekly_doc.enabled is True
+    assert cfg.roles[0].confirm_before_write is False
+    # bare model defaults remain safe-off
+    assert OpsReviewConfig().enabled is False
+    assert ScheduleNotifyConfig().dry_run is True
+    assert ReportsConfig().risk_to_ops is False
+    assert WeeklyDocConfig().enabled is False
 
 def test_refresh_open_deps_minimal_writes(tables):
     class API:
