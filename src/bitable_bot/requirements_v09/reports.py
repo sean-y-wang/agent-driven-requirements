@@ -103,7 +103,7 @@ def period(kind: str, today: date) -> tuple[date, date]:
 def personal_body(member: Member, rows: list[ProgressEntry], start: date, end: date) -> str:
     lines = [f"{member.name}（{start} 至 {end}）"]
     if not rows:
-        lines.append("无编码/请手填：可提交进展、填写非编码工作，或确认本期无进展。")
+        lines.append("本期还没有进展。可点「改摘要」写下今天做了什么，或点「整单确认」表示本期无进展。")
     for row in sorted(rows, key=lambda r: (r.day, r.module, r.task, r.agent)):
         suffix = "；待复核" if row.review else ""
         risk = f"；风险：{row.risk}" if row.risk else ""
@@ -125,7 +125,7 @@ def confirmation_card(draft: dict) -> dict:
                 "elements": [
                     {
                         "tag": "plain_text",
-                        "content": "一次只处理本份汇报。可整单确认、改摘要或作废；逐条修改/无编码手填请在确认会话或私聊中继续。",
+                        "content": "一次只处理本份。有内容直接「整单确认」；要改先点「改摘要」；没有进展也可以确认。",
                     }
                 ],
             },
@@ -247,7 +247,8 @@ class ReportStore:
         if not draft or not operator or draft["owner"] != operator or draft["revision"] != revision:
             return False
         day = date.fromisoformat(draft["day"])
-        expiry = day if draft["kind"] == "daily" else day + timedelta(days=6 - day.weekday())
+        # Daily: valid through the next calendar day (~1 day window). Weekly: through Sunday.
+        expiry = day + timedelta(days=1) if draft["kind"] == "daily" else day + timedelta(days=6 - day.weekday())
         return draft["status"] == "pending" and day <= today <= expiry
 
     def act(self, report_id, revision, operator, today, action, *, body=None, edits=None):
@@ -279,7 +280,7 @@ class ReportStore:
                         start, end = period(draft["kind"], date.fromisoformat(draft["day"]))
                         body = personal_body(Member(open_id=operator, name=operator), rows, start, end)
                     if not isinstance(body, str) or not body.strip() or len(body) > 20000:
-                        raise ValueError("摘要必须为 1–20000 字；空进展可手填「无编码，完成方案讨论」")
+                        raise ValueError("摘要请写 1–20000 字；没有编码任务时直接写今天做了什么即可")
                     draft["body"] = body.strip()
                     draft["revision"] = uuid.uuid4().hex[:16]
                     draft["edited"] = "1"

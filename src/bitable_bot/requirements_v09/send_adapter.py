@@ -327,6 +327,21 @@ def load_manager_recipients(
     return recipients
 
 
+def _tenant_token(env) -> str:
+    import json as _j
+    from urllib.request import Request as _R, urlopen as _u
+    from ..main import DOMAINS
+    domain = DOMAINS[(env.get("FEISHU_DOMAIN") or "feishu").lower()][0]
+    body = _j.dumps({"app_id": env.get("FEISHU_APP_ID", ""), "app_secret": env.get("FEISHU_APP_SECRET", "")}).encode()
+    req = _R(domain + "/open-apis/auth/v3/tenant_access_token/internal", data=body,
+             headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (agent-driven-requirements)"}, method="POST")
+    with _u(req, timeout=30) as r:
+        data = _j.load(r)
+    if data.get("code") != 0 or not data.get("tenant_access_token"):
+        raise ValueError("机器人凭证换取 tenant_access_token 失败")
+    return data["tenant_access_token"]
+
+
 def build_lark_delivery_api(env: dict[str, str] | None = None) -> DeliveryAPI:
     """Create a tenant-token Lark client for outbound IM delivery."""
     import lark_oapi as lark
@@ -399,9 +414,21 @@ def main(argv: list[str] | None = None) -> int:
                 if not cfg.tables:
                     raise ValueError("汇报需要 0.9 四表配置")
                 timezone = args.timezone or cfg.timezone
-                api_user = UserAPI(os.environ.get("FEISHU_USER_ACCESS_TOKEN", ""))
-                api_user.identity()
                 table = cfg.tables.progress
+                read_as = (os.environ.get("REPORT_READ_AS") or "user").lower()
+                api_user = None
+                if read_as != "bot":
+                    try:
+                        api_user = UserAPI(os.environ.get("FEISHU_USER_ACCESS_TOKEN", ""))
+                        api_user.identity()
+                    except Exception as e:
+                        if read_as == "user-only":
+                            raise
+                        print(f"requirements-deliver: 本人令牌不可用（{e}），改用机器人身份只读进展表", file=sys.stderr)
+                        api_user = None
+                if api_user is None:
+                    # Read-only: the bot app is a collaborator of the base; delivery already uses tenant token.
+                    api_user = UserAPI(_tenant_token(os.environ))
                 from .reports import entries_from_records
 
                 entries = entries_from_records(api_user.list_all_records(table.app_token, table.table_id), table)
