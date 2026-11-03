@@ -12,6 +12,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
+from zoneinfo import ZoneInfo
 
 from ..config import ConfigError
 from ..writer import FeishuAPIError
@@ -329,7 +330,9 @@ def load_manager_recipients(
 
 def _tenant_token(env) -> str:
     import json as _j
-    from urllib.request import Request as _R, urlopen as _u
+    from urllib.request import Request as _R
+    from urllib.request import urlopen as _u
+
     from ..main import DOMAINS
     domain = DOMAINS[(env.get("FEISHU_DOMAIN") or "feishu").lower()][0]
     body = _j.dumps({"app_id": env.get("FEISHU_APP_ID", ""), "app_secret": env.get("FEISHU_APP_SECRET", "")}).encode()
@@ -366,6 +369,32 @@ def build_lark_delivery_api(env: dict[str, str] | None = None) -> DeliveryAPI:
         .build()
     )
     return LarkFeishuAPI(client)
+
+
+def _prd_extras(cfg, api, data, now, timezone) -> dict:
+    """PRD：日报风险预警（逾期/临近上线没进展/依赖未完成）、管理者汇总时间与按部门拆分新增需求。"""
+    from .prd2 import dept_line, new_requirements_by_dept, risk_alerts
+
+    rc = cfg.reports
+    out: dict = {"manager_schedule": os.environ.get("REPORT_MANAGER_SCHEDULE") or rc.manager_schedule}
+    t = cfg.tables
+    if rc.risk_alerts:
+        try:
+            tasks = api.list_all_records(t.tasks.app_token, t.tasks.table_id)
+            progress = api.list_all_records(t.progress.app_token, t.progress.table_id)
+            today = now.astimezone(ZoneInfo(timezone)).date()
+            out["risks"] = {m.open_id: risk_alerts(api, t, m.open_id, today, timezone, near_days=rc.near_days,
+                                                   stale_days=rc.stale_days, tasks=tasks, progress=progress)
+                            for m in data.members}
+        except Exception as e:
+            print(f"requirements-deliver: 风险预警读取失败（{e}），本次日报不带风险", file=sys.stderr)
+
+    def _dept(start, end):
+        rows = api.list_all_records(t.requirements.app_token, t.requirements.table_id)
+        return dept_line(new_requirements_by_dept(rows, t, start, end, timezone))
+
+    out["dept_line"] = _dept
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -448,8 +477,11 @@ def main(argv: list[str] | None = None) -> int:
 
             now = datetime.fromisoformat(args.now) if args.now else datetime.now(ZoneInfo(timezone))
             store = ReportStore() if args.dry_run else ReportStore(args.db)
+            extra: dict = {}
+            if args.config:
+                extra = _prd_extras(cfg, api_user, data, now, timezone)
             try:
-                outbox = scheduled_payloads(data, now, store, timezone)
+                outbox = scheduled_payloads(data, now, store, timezone, **extra)
             finally:
                 store.close()
         else:
