@@ -1,5 +1,5 @@
-from pathlib import Path
 from datetime import date, datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -125,7 +125,12 @@ def test_links_parsing():
 def test_ops_flags_prd_example_on_and_model_defaults_safe():
     """xfchat example 按 t635u 拍板打开；未写配置时模型默认仍安全关闭。"""
     from bitable_bot.config import load_config
-    from bitable_bot.config.models import AppConfig, OpsReviewConfig, ScheduleNotifyConfig, ReportsConfig, WeeklyDocConfig
+    from bitable_bot.config.models import (
+        OpsReviewConfig,
+        ReportsConfig,
+        ScheduleNotifyConfig,
+        WeeklyDocConfig,
+    )
 
     cfg = load_config(Path("config/roles.requirements.xfchat.example.yaml"), env={
         "REQUIREMENTS_APP_TOKEN": "bascnEXAMPLE",

@@ -1523,11 +1523,9 @@ class BotService:
     def expire_sessions(self) -> int:
         expired = self.store.pop_expired_sessions()
         for s in expired:
-            role = self.cfg.find_role(s.role)
-            name = role.name if role else "记录"
             self._reply(
                 s.source_message_id,
-                f"这条确认超时了，没有收录。重新跟我说一遍就行。",
+                "这条确认超时了，没有收录。重新跟我说一遍就行。",
                 thread=True,
             )
         return len(expired)

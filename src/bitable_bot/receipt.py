@@ -60,7 +60,7 @@ def _trace_footer(role: Role, values: dict[str, Any], people: dict[str, str], tz
 
 
 def preview_lines(role: Role, values: dict[str, Any], people: dict[str, str], tz: str) -> list[str]:
-    lines = [f"请确认这条需求："]
+    lines = ["请确认这条需求："]
     for spec in confirm_specs(role, values):
         lines.append(f"• {spec.field}：{fmt_value(spec, values[spec.key], people, tz)}")
     footer = _trace_footer(role, values, people, tz)
@@ -74,7 +74,7 @@ def success_text(
     role: Role, values: dict[str, Any], people: dict[str, str], tz: str, url: str, duplicated: bool = False
 ) -> str:
     title = role.receipt_title or (
-        f"🔁 这条已经记过了" if duplicated else f"✅ 需求已收录"
+        "🔁 这条已经记过了" if duplicated else "✅ 需求已收录"
     )
     if duplicated and role.receipt_title:
         title = f"🔁 {role.receipt_title}"
