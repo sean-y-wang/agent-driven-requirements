@@ -16,10 +16,27 @@ def cell_text(value) -> str:
     return str(value or "")
 
 
+def _default_open_domain() -> str:
+    import os
+    explicit = os.environ.get("FEISHU_OPEN_DOMAIN", "").strip()
+    if explicit:
+        return explicit.rstrip("/")
+    # Align with personal-agent / send_adapter: FEISHU_DOMAIN selects open host.
+    try:
+        from ..main import DOMAINS
+        key = (os.environ.get("FEISHU_DOMAIN") or "feishu").lower()
+        if key in DOMAINS:
+            return DOMAINS[key][0]
+    except Exception:
+        pass
+    return "https://open.feishu.cn"
+
+
 class UserAPI:
-    def __init__(self, token: str, domain="https://open.feishu.cn"):
+    def __init__(self, token: str, domain: str | None = None):
         if not token:
             raise ValueError("未登录：请设置 FEISHU_USER_ACCESS_TOKEN（本人 OAuth），不能使用机器人凭证。")
+        domain = (domain or _default_open_domain()).rstrip("/")
         if domain not in ("https://open.feishu.cn", "https://open.larksuite.com", "https://open.xfchat.iflytek.com"):
             raise ValueError("unsupported Feishu domain")
         self._token = token
@@ -32,7 +49,7 @@ class UserAPI:
         req = Request(
             url,
             method=method,
-            headers={"Authorization": "Bearer " + self._token, "Content-Type": "application/json"},
+            headers={"Authorization": "Bearer " + self._token, "Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (agent-driven-requirements)"},
             data=json.dumps(body).encode() if body is not None else None,
         )
         try:

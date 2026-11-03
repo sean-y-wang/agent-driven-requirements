@@ -52,6 +52,11 @@ class FeishuAPI(Protocol):
 
     def add_reaction(self, message_id: str, emoji_type: str = "Get") -> None: ...
 
+    # ---- attachments (optional; needs im:resource + bitable/drive upload scope) ----
+    def download_resource(self, message_id: str, file_key: str, kind: str) -> tuple[bytes, str]: ...
+
+    def upload_media(self, app_token: str, file_name: str, data: bytes, parent_type: str) -> str: ...
+
 
 class LarkFeishuAPI:
     """Production implementation backed by lark_oapi.Client (handles tenant_access_token)."""
@@ -302,3 +307,31 @@ class LarkFeishuAPI:
         )
         resp = self.client.im.v1.message_reaction.create(req)
         self._check(resp)
+
+    def download_resource(self, message_id: str, file_key: str, kind: str) -> tuple[bytes, str]:
+        """Download an image/file sent in a message the bot can read. Returns (bytes, file_name)."""
+        from lark_oapi.api.im.v1 import GetMessageResourceRequest
+
+        req = GetMessageResourceRequest.builder().message_id(message_id).file_key(file_key).type(kind).build()
+        resp = self.client.im.v1.message_resource.get(req)
+        self._check(resp)
+        return resp.file.read(), (getattr(resp, "file_name", None) or "")
+
+    def upload_media(self, app_token: str, file_name: str, data: bytes, parent_type: str) -> str:
+        """Upload bytes as Bitable attachment media (parent_type bitable_image|bitable_file). Returns file_token."""
+        import io
+
+        from lark_oapi.api.drive.v1 import UploadAllMediaRequest, UploadAllMediaRequestBody
+
+        body = (
+            UploadAllMediaRequestBody.builder()
+            .file_name(file_name)
+            .parent_type(parent_type)
+            .parent_node(app_token)
+            .size(len(data))
+            .file(io.BytesIO(data))
+            .build()
+        )
+        resp = self.client.drive.v1.media.upload_all(UploadAllMediaRequest.builder().request_body(body).build())
+        self._check(resp)
+        return resp.data.file_token

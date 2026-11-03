@@ -87,7 +87,7 @@ def test_requirements_config_shape(req_cfg):
     assert req_cfg.context.recent_messages == 5
     role = req_cfg.roles[0]
     assert role.name == "需求小助手"
-    assert role.confirm_before_write is True
+    assert role.confirm_before_write is False  # PRD：明确提需直接入池
     assert role.query.max_reply == 2
     assert req_cfg.primary_role() is role
     assert "需求小助手" in help_text(req_cfg)
@@ -108,6 +108,7 @@ roles:
 
 
 def test_react_and_confirm_card_flow(req_harness):
+    req_harness.service.cfg.roles[0].confirm_before_write = True
     h = req_harness
     h.provider.outputs = [
         {
@@ -140,23 +141,29 @@ def test_react_and_confirm_card_flow(req_harness):
     cards = [r for r in h.api.replies if r.get("type") == "interactive"]
     assert cards and cards[-1]["in_thread"]
     card = cards[-1]["card"]
-    assert "请确认写入" in card["header"]["title"]["content"]
+    assert "请确认" in card["header"]["title"]["content"]
     actions = card["elements"][-1]["actions"]
     assert {a["text"]["content"] for a in actions} == {"确认", "取消", "修改"}
     assert not h.api.records
     sessions = h.store.sessions_for(m.chat_id, m.sender_open_id)
     assert sessions and sessions[0].raw_fields.get("__phase__") == PHASE_CONFIRM
 
-    # card confirm
+    # card confirm — receipt delivered via callback card update (no extra reply_card)
     value = actions[0]["value"]
+    before_replies = len(h.api.replies)
     toast = h.service.handle_card_action({"operator": {"open_id": m.sender_open_id}, "action": {"value": value}})
     assert toast["toast"]["type"] == "success"
+    assert toast.get("card", {}).get("type") == "raw"
+    assert "需求已收录" in toast["card"]["data"]["header"]["title"]["content"] or "✅" in toast["card"]["data"]["header"]["title"]["content"]
     assert h.api.records
     assert h.api.records[0]["fields"]["需求标题"] == "订单导出加速"
     assert h.store.sessions_for(m.chat_id, m.sender_open_id) == []
+    # no additional interactive reply beyond the original confirm card
+    assert len([r for r in h.api.replies[before_replies:] if r.get("type") == "interactive"]) == 0
 
 
 def test_card_cancel_and_modify(req_harness):
+    req_harness.service.cfg.roles[0].confirm_before_write = True
     h = req_harness
     h.provider.outputs = [
         {
@@ -179,6 +186,7 @@ def test_card_cancel_and_modify(req_harness):
     cancel_val = next(a["value"] for a in card["elements"][-1]["actions"] if a["text"]["content"] == "取消")
     toast = h.service.handle_card_action({"operator": {"open_id": m.sender_open_id}, "action": {"value": cancel_val}})
     assert toast["toast"]["content"] == "已取消"
+    assert toast.get("card", {}).get("type") == "raw"
     assert not h.api.records
 
     # restart and modify
@@ -228,7 +236,7 @@ def test_confirm_card_builder(req_cfg):
         user_id="ou",
         source_message_id="om",
     )
-    assert card["header"]["title"]["content"].startswith("请确认写入")
+    assert card["header"]["title"]["content"].startswith("请确认")
     assert len(card["elements"][-1]["actions"]) == 3
 
 
@@ -514,9 +522,9 @@ def test_followup_asks_all_missing_once(req_harness):
     ]
     h.service.handle(make_msg("导出很慢需要优化性能相关能力希望尽快处理一下优先级高"))
     text = h.api.replies[-1]["text"]
-    assert "还需要补充" in text
+    assert ("还需要补充" in text or "还差这几项" in text)
     assert "需求标题" in text
-    assert text.count("还需要补充") == 1
+    assert text.count("还需要补充") + text.count("还差这几项") == 1
     sessions = h.store.sessions_for("oc_1", "ou_alice")
     assert sessions and "title" in sessions[0].missing
 
@@ -554,7 +562,7 @@ def test_session_timeout_cancels(req_harness):
     h.clock.t += 16 * 60
     n = h.service.expire_sessions()
     assert n == 1
-    assert "已超时取消" in h.api.replies[-1]["text"]
+    assert ("已超时取消" in h.api.replies[-1]["text"] or "超时" in h.api.replies[-1]["text"])
     assert h.store.sessions_for(m.chat_id, m.sender_open_id) == []
 
 

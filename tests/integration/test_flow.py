@@ -37,7 +37,7 @@ def test_complete_message_written(harness):
     }
     assert "原始消息" not in h.api.replies[-1]["text"]  # receipt hides raw text
     reply = h.api.replies[-1]["text"]
-    assert reply.startswith("✅ 已记录到「研发日报」") and "日期：2026-10-23" in reply and "record=rec1" in reply
+    assert reply.startswith("✅ 需求已收录") and "日期：2026-10-23" in reply and "record=rec1" in reply
     assert h.store.audit_rows()[-1]["result"] == "ok"
     # the user's text is fenced in the prompt
     assert "<<<USER_TEXT>>>\n今天完成了登录模块" in h.provider.calls[0][1]["content"]
@@ -85,7 +85,7 @@ def test_max_followups_abandons(harness):
     h.service.handle(make_msg("嗯"))
     h.service.handle(make_msg("不知道"))
     assert not h.api.records
-    assert "已放弃" in h.api.replies[-1]["text"]
+    assert "这次先不算了" in h.api.replies[-1]["text"]
     assert h.store.sessions_for("oc_1", "ou_alice") == []
 
 
@@ -129,7 +129,7 @@ def test_help_unknown_plain_and_nontext(harness):
     h.service.handle(make_msg("/help"))
     assert "/日报" in h.api.replies[-1]["text"]
     h.service.handle(make_msg("/xyz hi"))
-    assert h.api.replies[-1]["text"].startswith("未知命令 /xyz")
+    assert "没认出命令 /xyz" in h.api.replies[-1]["text"]
     h.provider.outputs = [{"role": None, "confidence": 0.1, "reason": "greeting"}]
     h.service.handle(make_msg("你好"))
     # greetings / chitchat → help guide (not role-pick / record)
@@ -159,7 +159,7 @@ def test_llm_failure_keeps_session_for_retry(harness):
     h.provider.outputs = [out(title=None), LLMError("down"), out(title="ok")]
     h.service.handle(make_msg("/bug x"))
     h.service.handle(make_msg("标题是 ok"))
-    assert "AI 字段提取暂时失败" in h.api.replies[-1]["text"]
+    assert "刚才没整理好" in h.api.replies[-1]["text"]
     assert h.store.audit_rows()[-1]["result"].startswith("llm_error")
     h.service.handle(make_msg("标题是 ok"))
     assert h.api.records[0]["fields"]["标题"] == "ok"
@@ -178,7 +178,7 @@ def test_already_written_message(harness):
     h = harness
     h.store.put_record("om_x", "rec9", "https://u")
     h.service.handle(make_msg("/bug t", message_id="om_x"))
-    assert "已记录过" in h.api.replies[-1]["text"] and not h.provider.calls
+    assert "这条已经记过了" in h.api.replies[-1]["text"] and not h.provider.calls
 
 
 def test_internal_error_replies(harness, monkeypatch):

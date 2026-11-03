@@ -83,8 +83,8 @@ def rerank_and_summarize(
     q = role.query
     projected = [_project(role, c) for c in candidates]
     projected = [p for p in projected if p.get("record_id")]
-    empty_summary = f"在「{role.name}」里没找到和「{query}」相关的需求记录。"
-    empty_text = empty_summary + f"可以换更具体的关键词再问，或直接 {role.command} … 登记新需求。"
+    empty_summary = f"没找到和「{query}」相关的需求。"
+    empty_text = empty_summary + "可以换个关键词再问，或直接说新需求让我帮你记。"
     if not projected:
         return empty_summary, empty_text, []
     system = (q.query_prompt or DEFAULT_PROMPT).format(max_reply=q.max_reply)
@@ -132,10 +132,10 @@ def rerank_and_summarize(
         if len(chosen) >= q.max_reply:
             break
     summary = str(obj.get("summary") or "").strip() or (
-        "根据现有记录，相关进展如下：" if chosen else f"在「{role.name}」里没找到和「{query}」相关的需求记录。"
+        "相关进展如下：" if chosen else f"没找到和「{query}」相关的需求。"
     )
     if not chosen:
-        extra = "" if "没找到" in summary else f"\n你可以换个关键词再问，或直接 {role.command} … 登记新需求。"
+        extra = "" if "没找到" in summary else "\n可以换个关键词再问，或直接说新需求让我帮你记。"
         return summary, summary + extra, []
     return summary, _format_reply(role, query, summary, chosen, base_url), chosen
 

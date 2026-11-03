@@ -83,7 +83,8 @@ def due_kinds(now: datetime, timezone="Asia/Shanghai") -> list[str]:
     due = []
     if local.weekday() < 5 and local.time() >= time(9):
         due.append("daily")
-    if local.weekday() == 4 and local.time() >= time(18):
+    # PRD：个人周报草稿周五 12:00 发出，14:00 前确认；管理者汇总 14:00
+    if local.weekday() == 4 and local.time() >= time(12):
         due.append("weekly")
     return due
 
@@ -103,7 +104,7 @@ def period(kind: str, today: date) -> tuple[date, date]:
 def personal_body(member: Member, rows: list[ProgressEntry], start: date, end: date) -> str:
     lines = [f"{member.name}（{start} 至 {end}）"]
     if not rows:
-        lines.append("无编码/请手填：可提交进展、填写非编码工作，或确认本期无进展。")
+        lines.append("本期还没有进展。可点「改摘要」写下今天做了什么，或点「整单确认」表示本期无进展。")
     for row in sorted(rows, key=lambda r: (r.day, r.module, r.task, r.agent)):
         suffix = "；待复核" if row.review else ""
         risk = f"；风险：{row.risk}" if row.risk else ""
@@ -125,7 +126,7 @@ def confirmation_card(draft: dict) -> dict:
                 "elements": [
                     {
                         "tag": "plain_text",
-                        "content": "一次只处理本份汇报。可整单确认、改摘要或作废；逐条修改/无编码手填请在确认会话或私聊中继续。",
+                        "content": "一次只处理本份。有内容直接「整单确认」；要改先点「改摘要」；没有进展也可以确认。",
                     }
                 ],
             },
@@ -247,7 +248,8 @@ class ReportStore:
         if not draft or not operator or draft["owner"] != operator or draft["revision"] != revision:
             return False
         day = date.fromisoformat(draft["day"])
-        expiry = day if draft["kind"] == "daily" else day + timedelta(days=6 - day.weekday())
+        # Daily: valid through the next calendar day (~1 day window). Weekly: through Sunday.
+        expiry = day + timedelta(days=1) if draft["kind"] == "daily" else day + timedelta(days=6 - day.weekday())
         return draft["status"] == "pending" and day <= today <= expiry
 
     def act(self, report_id, revision, operator, today, action, *, body=None, edits=None):
@@ -279,7 +281,7 @@ class ReportStore:
                         start, end = period(draft["kind"], date.fromisoformat(draft["day"]))
                         body = personal_body(Member(open_id=operator, name=operator), rows, start, end)
                     if not isinstance(body, str) or not body.strip() or len(body) > 20000:
-                        raise ValueError("摘要必须为 1–20000 字；空进展可手填「无编码，完成方案讨论」")
+                        raise ValueError("摘要请写 1–20000 字；没有编码任务时直接写今天做了什么即可")
                     draft["body"] = body.strip()
                     draft["revision"] = uuid.uuid4().hex[:16]
                     draft["edited"] = "1"
@@ -329,7 +331,14 @@ class ReportStore:
         self.db.close()
 
 
-def manager_report(members, entries, today, confirmed, *, snapshots=None) -> dict:
+def manager_due(local: datetime, schedule: str = "mon09") -> bool:
+    """管理者汇总时间：mon09=周一 9:00（原有）、fri14=周五 14:00（PRD）、both。"""
+    mon = local.weekday() == 0 and local.time() >= time(9)
+    fri = local.weekday() == 4 and local.time() >= time(14)
+    return (schedule in ("mon09", "both") and mon) or (schedule in ("fri14", "both") and fri)
+
+
+def manager_report(members, entries, today, confirmed, *, snapshots=None, dept_line: str = "") -> dict:
     start, end = period("weekly", today)
     rows = [p for p in personal_entries(entries) if start <= p.day <= end and p.author in confirmed]
     if snapshots is not None:
@@ -351,14 +360,19 @@ def manager_report(members, entries, today, confirmed, *, snapshots=None) -> dic
         "period": f"{start}/{end}",
         "missing": missing,
         "risks": risks,
-        "body": f"跨人周报（{start} 至 {end}）\n缺报/未确认：{'、'.join(missing) or '无'}\n风险：\n"
+        "body": f"跨人周报（{start} 至 {end}）\n缺报/未确认：{'、'.join(missing) or '无'}\n"
+        + (f"{dept_line}\n" if dept_line else "")
+        + "风险：\n"
         + ("\n".join(risks) or "无")
         + "\n\n"
         + (body or "暂无已确认周报。"),
     }
 
 
-def scheduled_payloads(data: ReportInput, now: datetime, store: ReportStore, timezone="Asia/Shanghai") -> dict:
+def scheduled_payloads(data: ReportInput, now: datetime, store: ReportStore, timezone="Asia/Shanghai", *,
+                       risks: dict[str, list[str]] | None = None, manager_schedule: str = "mon09",
+                       dept_line=None) -> dict:
+    """risks: open_id → 日报风险预警行；dept_line: callable(start, end) → 「本周新增需求 N 条（按部门）」。"""
     kinds = due_kinds(now, timezone)
     local = now.astimezone(ZoneInfo(timezone))
     today = local.date()
@@ -371,7 +385,9 @@ def scheduled_payloads(data: ReportInput, now: datetime, store: ReportStore, tim
                 member.open_id,
                 kind,
                 today.isoformat(),
-                personal_body(member, rows, start, end),
+                personal_body(member, rows, start, end)
+                + (("\n风险预警：\n" + "\n".join(f"- {x}" for x in (risks or {}).get(member.open_id, [])))
+                   if kind == "daily" and (risks or {}).get(member.open_id) else ""),
                 [r.model_dump(mode="json") for r in rows],
             )
             if draft["status"] == "pending":
@@ -391,11 +407,18 @@ def scheduled_payloads(data: ReportInput, now: datetime, store: ReportStore, tim
                     }
                 )
     manager = None
-    if "weekly" in kinds or (local.weekday() == 0 and "daily" in kinds):
+    legacy = manager_schedule in ("mon09", "both") and ("weekly" in kinds or (local.weekday() == 0 and "daily" in kinds))
+    if legacy or manager_due(local, manager_schedule):
         anchor = today - timedelta(days=1) if local.weekday() == 0 else today
         start, end = period("weekly", anchor)
         snapshots = store.confirmed_reports("weekly", start, end)
-        manager = manager_report(data.members, [], anchor, set(), snapshots=snapshots)
+        line = ""
+        if dept_line is not None:
+            try:
+                line = dept_line(start, end)
+            except Exception:
+                line = ""
+        manager = manager_report(data.members, [], anchor, set(), snapshots=snapshots, dept_line=line)
     return {"confirmations": out, "manager": manager}
 
 

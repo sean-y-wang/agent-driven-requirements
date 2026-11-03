@@ -5,6 +5,7 @@
 ## [未发布]
 
 ### 新增
+- **PRD 第一批（xfchat）**：首次提需问一次「提出部门」并沿用（写入成员配置表，本地兜底缓存，可「跳过」）；会话中发送的图片/文件及富文本内嵌图片转存到需求「附件」；私聊「我的任务」查看分给自己的任务（参与人/产品/开发/测试），「2 改为 开发中」改状态，改不了别人的；延期通知（计划上线日期已过且未上线 → 私聊需求受理人，无则提出人；每条记录每个计划日期一次，`overdue_notify.dry_run` 默认只记日志）；新增可选 `tables.members`「成员配置」表，日报/周报成员优先读表、回退 JSON 名单。字段类型新增 `attachment`，字段可设 `llm: false` 由系统维护。
 - 内置汇报**发送适配器** `requirements-deliver`：消费 outbox，按 `(id, revision, recipient)` 去重，瞬时失败重试，管理者长文分片，支持 dry-run。挂载示例见 `deploy/` 与 `scripts/run_report_delivery.sh`。生产 SOP：`docs/zh-CN/requirements-ops.md`。
 
 ### 变更

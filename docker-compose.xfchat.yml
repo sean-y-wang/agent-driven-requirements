@@ -1,0 +1,7 @@
+# Cutover overlay: force xfchat roles even when requirements.yml sets v09.
+# 复制 config/roles.requirements.xfchat.example.yaml 为 roles.requirements.xfchat.yaml 并填入真实表 ID（该文件不入库）
+services:
+  bot:
+    environment:
+      BOT_CONFIG: /app/config/roles.requirements.xfchat.yaml
+      FEISHU_DOMAIN: xfchat

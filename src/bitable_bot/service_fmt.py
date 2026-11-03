@@ -23,5 +23,7 @@ def fmt_value(spec: FieldSpec, v: Any, people: dict[str, str], tz: str) -> str:
         return v["link"] if isinstance(v, dict) else str(v)
     if spec.type == "checkbox":
         return "是" if v else "否"
+    if spec.type == "attachment":
+        return f"{len(v) if isinstance(v, list) else 1} 个文件"
     s = " ".join(str(v).split())
     return s if len(s) <= 80 else s[:77] + "..."

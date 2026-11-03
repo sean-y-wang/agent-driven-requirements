@@ -25,7 +25,9 @@ def data():
     [
         ("2026-11-02T08:59:00+08:00", []),
         ("2026-11-02T09:00:00+08:00", ["daily"]),
-        ("2026-11-06T17:59:00+08:00", ["daily"]),
+        ("2026-11-06T11:59:00+08:00", ["daily"]),
+        ("2026-11-06T12:00:00+08:00", ["daily", "weekly"]),
+        ("2026-11-06T17:59:00+08:00", ["daily", "weekly"]),
         ("2026-11-06T18:00:00+08:00", ["daily", "weekly"]),
         ("2026-11-07T18:00:00+08:00", []),
         ("2026-11-06T10:00:00+00:00", ["daily", "weekly"]),
@@ -61,7 +63,9 @@ def test_unconfirmed_redraft_auth_revision_expiry_and_restart(tmp_path):
     assert not store.confirm(draft["id"], draft["revision"], "ou_alice", date(2026, 11, 5))
     assert not store.confirm(newer["id"], newer["revision"], "ou_bob", date(2026, 11, 5))
     assert not store.confirm(newer["id"], newer["revision"], "", date(2026, 11, 5))
-    assert not store.confirm(newer["id"], newer["revision"], "ou_alice", date(2026, 11, 6))
+    # Daily remains valid through the next calendar day; expires on day+2.
+    assert store.valid(newer, newer["revision"], "ou_alice", date(2026, 11, 6))
+    assert not store.confirm(newer["id"], newer["revision"], "ou_alice", date(2026, 11, 7))
     store.close()
     store = ReportStore(db)
     next_day = store.draft("ou_alice", "daily", "2026-11-06", "次日重拟")

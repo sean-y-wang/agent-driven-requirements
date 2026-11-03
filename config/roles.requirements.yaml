@@ -71,7 +71,7 @@ roles:
     aliases: [/需求, /req]
     name: 需求小助手
     description: 收集产品需求、功能建议、优化想法；也可查询已有需求进展
-    confirm_before_write: true
+    confirm_before_write: false
     queryable: true
     query:
       search_fields: [title]

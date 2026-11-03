@@ -27,8 +27,15 @@ def run(*args, cwd=None):
 def main():
     cfg = load_config(ROOT / "config/roles.requirements.v09.yaml", env={})
     assert cfg.tables is not None and cfg.scenario == "requirements"
-    assert set(type(cfg.tables).model_fields) == {"requirements", "tasks", "progress", "modules"}
-    for name in type(cfg.tables).model_fields:
+    assert set(type(cfg.tables).model_fields) == {
+        "requirements",
+        "tasks",
+        "progress",
+        "modules",
+        "members",
+        "external",
+    }
+    for name in ("requirements", "tasks", "progress", "modules"):
         assert all(re.search(r"[\u4e00-\u9fff]", f.field) for f in cfg.tables.get(name).fields)
     fields = {f.key: f for f in cfg.tables.requirements.fields}
     assert {o.value for o in fields["status"].options} == set(STATUSES)

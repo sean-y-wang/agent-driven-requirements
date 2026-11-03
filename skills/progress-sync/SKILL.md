@@ -17,6 +17,14 @@ python3 scripts/progress_sync.py map --repo /absolute/project --module 'AIPaaS 4
 
 脚本优先使用 git status / diff --stat / 当日本人 Git 提交信息生成 ≤60 字动词句。它不上传 patch、代码或完整 transcript。Git 无变化时可显式补充 `--transcript-summary '完成接口方案讨论'`，先去除密钥和私人内容。提交标题可能含敏感内容，同步前应保证提交信息适合团队可见。
 
+开工前先读任务档案（只读，不写表）：目标、来源需求与原始群聊链接、依赖/被依赖、外部依赖、最近进展和未解除风险。档案即任务记录本身，不另建表：
+
+```sh
+python3 scripts/progress_sync.py dossier --repo /absolute/project --config /absolute/roles.yaml --task recTASK
+```
+
+开始改代码前把档案内容当作本次工作的背景；若档案显示有未完成依赖或未解除风险，先告诉本人再动手。
+
 手动或已启用的会话结束同步：
 
 ```sh

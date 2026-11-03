@@ -9,10 +9,13 @@ from datetime import date
 from pathlib import Path
 
 
-def progress_key(owner: str, day: str, task: str, source: str) -> str:
+def progress_key(owner: str, day: str, task: str, source: str, tag: str | None = None) -> str:
     # Preserve the 0.9 digest byte-for-byte; old rows remain updateable.
+    # PRD：同一天、同一人、同一任务、同一标签、同一来源只留一行。标签为空或「进展」时沿用旧键，
+    # 其余标签（风险/风险解除/待办/排期变更）各自独立一行。
     day = date.fromisoformat(day).isoformat()
-    return hashlib.sha256(json.dumps([owner, day, task, source], ensure_ascii=False).encode()).hexdigest()
+    parts = [owner, day, task, source] + ([tag] if tag and tag != "进展" else [])
+    return hashlib.sha256(json.dumps(parts, ensure_ascii=False).encode()).hexdigest()
 
 
 @contextmanager
