@@ -345,9 +345,11 @@ class BotService:
             if passive:
                 log.info("observe.intent", message_id=msg.message_id, action=intent.action, confidence=intent.confidence)
                 if role and intent.action in ("record", "candidate") and self._observe_allow(msg, text):
-                    # Suspected requirement: confirm card to the speaker; nothing is written until confirmed.
+                    # PRD：群旁路疑似需求直接入「待分诊」，不找本人确认卡
                     self._start(msg, role, text, people, raw_text=text, conv=conv, intake="passive")
-                # progress / other: gray stage does not auto-write anything
+                elif role and intent.action == "progress" and self._observe_allow(msg, text):
+                    # PRD：群进展静默入表，标待复核，推产品运营
+                    self._group_progress(msg, text, role)
                 return
             if role and intent.action == "progress":
                 if msg.chat_type == "group":
@@ -436,8 +438,11 @@ class BotService:
             "source_message": msg.message_id,
             "risk": text[:300] if any(word in text for word in ("阻塞", "风险", "延期", "卡住")) else "",
         }
-        if any(getattr(f, "key", None) == "tag" for f in (getattr(self.cfg.tables.progress, "fields", None) or [])):
+        prog_fields = getattr(self.cfg.tables.progress, "fields", None) or []
+        if any(getattr(f, "key", None) == "tag" for f in prog_fields):
             values["tag"] = "风险" if values["risk"] else "进展"
+        if any(getattr(f, "key", None) == "review_state" for f in prog_fields):
+            values["review_state"] = "待复核"
         for key, value in self.cfg.resolve_chat_bindings(msg.chat_id, role):
             if key == "project":
                 values["module"] = value
@@ -445,6 +450,19 @@ class BotService:
             wr = MultiTableWriter(self.writer, self.cfg.tables).write("progress", values, msg.message_id)
             self.store.audit(chat_id=msg.chat_id, sender=msg.sender_open_id,
                              command="progress", fields=values, record_id=wr.record_id, result="progress:review")
+            # PRD：待复核进展推给产品运营（不找本人确认）
+            if self.cfg.ops_review.enabled:
+                try:
+                    preview = (text or "")[:120]
+                    for oid in self._ops_ids():
+                        if oid and oid != msg.sender_open_id:
+                            self.api.send_text(
+                                oid,
+                                f"群进展待复核：{preview}",
+                                receive_id_type="open_id",
+                            )
+                except Exception:
+                    log.exception("progress.ops_notify_failed")
         except WriteError as e:
             self._reply(msg.message_id, e.user_message)
 
@@ -866,8 +884,9 @@ class BotService:
             if not result.complete:
                 self.store.audit(**{**audit, "text": None}, fields=result.values, result="observe:incomplete")
                 return
-            self._ask_confirm(reply_to, role, s, result.values, all_people, ctx.tz, audit)
-            log.info("observe.confirm_card", message_id=s.source_message_id, sender_open_id=s.user_id)
+            # PRD：旁路疑似需求直接写入待分诊，不发确认卡
+            log.info("observe.direct_write", message_id=s.source_message_id, sender_open_id=s.user_id)
+            self._do_write(msg, role, s, result.values, all_people, ctx, audit, reply_to)
             return
         if candidate:
             if not result.complete:
@@ -883,13 +902,16 @@ class BotService:
 
         if result.complete or (s.raw_fields.get("__skipped_optional__") and not result.missing):
             # confirm-before-write
-            need_confirm = (role.confirm_before_write or self.cfg.tables is not None) and not s.raw_fields.get("__confirmed__")
-            if (need_confirm or force_preview) and dept_spec is not None and dept is None and not passive:
+            # PRD：明确提需直接入池；仅当角色显式 confirm_before_write=true 才发确认卡
+            need_confirm = bool(role.confirm_before_write) and not s.raw_fields.get("__confirmed__")
+            # 首次提需仍要问部门（与是否确认卡无关）
+            if dept_spec is not None and dept is None and not passive and not s.raw_fields.get("__dept_asked__"):
                 self._ask_dept(reply_to, role, s, result.values, all_people, dept_spec, audit)
                 return
-            if need_confirm or force_preview:
+            if need_confirm or (force_preview and need_confirm):
                 self._ask_confirm(reply_to, role, s, result.values, all_people, ctx.tz, audit)
                 return
+            # force_preview 且无需确认卡 → 直接写（部门答完后的路径）
             self._do_write(msg, role, s, result.values, all_people, ctx, audit, reply_to)
             return
 
@@ -1023,6 +1045,10 @@ class BotService:
         self.store.audit(**audit, fields=values, record_id=wr.record_id, result="duplicate" if wr.duplicated else "ok")
         if self.cfg.tables and not wr.duplicated:
             self._after_intake(role, s, values, wr, reply_to)
+        # PRD：旁路/自动记下的（passive/candidate）静默入表，不回成功卡；明确提需才回执
+        quiet = s.raw_fields.get("__intake__") in ("passive", "candidate")
+        if quiet:
+            return
         card = success_card(role, values, people, ctx.tz, wr.url, duplicated=wr.duplicated)
         # Card-action confirm path: return receipt via callback (toast+card) instead of a
         # second reply_card, so we ACK within Feishu/xfchat's ~3s window (else client
@@ -1124,13 +1150,17 @@ class BotService:
                 self._reply(msg.message_id, "没认出部门，请回复序号（如「2」）或部门名；不想填回「跳过」。", thread=True)
                 return
         s.raw_fields["__dept__"] = dept
+        s.raw_fields["__dept_asked__"] = True
         if dept:
             s.raw_fields["dept"] = dept
-        s.raw_fields["__phase__"] = PHASE_CONFIRM
         if self.members is not None:
             name = (s.raw_fields.get("__ctx__") or {}).get("sender_name") or ""
             self.members.remember_dept(s.user_id, name, dept)
-        self._process(msg, role, s, people, skip_extract=True, force_preview=True)
+        # PRD：部门答完后，无确认卡则直接写；有确认卡则预览
+        force = bool(role.confirm_before_write)
+        if force:
+            s.raw_fields["__phase__"] = PHASE_CONFIRM
+        self._process(msg, role, s, people, skip_extract=True, force_preview=force)
 
     # ------------------------------------------------------------------ PRD batch 2
     def _ops_ids(self) -> list[str]:

@@ -83,7 +83,8 @@ def due_kinds(now: datetime, timezone="Asia/Shanghai") -> list[str]:
     due = []
     if local.weekday() < 5 and local.time() >= time(9):
         due.append("daily")
-    if local.weekday() == 4 and local.time() >= time(18):
+    # PRD：个人周报草稿周五 12:00 发出，14:00 前确认；管理者汇总 14:00
+    if local.weekday() == 4 and local.time() >= time(12):
         due.append("weekly")
     return due
 

@@ -365,8 +365,9 @@ class AppConfig(BaseModel):
         if isinstance(data, dict) and isinstance(data.get("tables"), dict) and len(data.get("roles", [])) == 1:
             table = data["tables"].get("requirements")
             if isinstance(table, dict):
+                # PRD：明确提需直接入池；confirm_before_write 默认 False，不再强制 True
                 role = {**data["roles"][0], "target": {k: table.get(k) for k in ("app_token", "table_id")},
-                        "fields": table.get("fields", []), "confirm_before_write": True}
+                        "fields": table.get("fields", [])}
                 data = {**data, "roles": [role]}
         return data
 

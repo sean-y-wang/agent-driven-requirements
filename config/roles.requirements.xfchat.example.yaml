@@ -66,7 +66,7 @@ roles:
   - /req
   name: 需求小助手
   description: 收集产品需求、功能建议、优化想法；也可查询已有需求进展
-  confirm_before_write: true
+  confirm_before_write: false
   queryable: true
   query:
     search_fields:
@@ -540,19 +540,35 @@ tables:
     - key: follow_link
       field: 跟进链接
       type: url
-# 延期通知：计划上线日期已过且未上线 → 私聊需求受理人（无则提出人账号）；每条记录每个计划日期只提醒一次
+
 overdue_notify:
-  enabled: false
-  dry_run: true
+  enabled: true
+  dry_run: false
   hour: 10
   done_statuses: [已上线, 已完成, 已关闭]
+schedule_notify:
+  dry_run: false
+  assign_brief: true
+ops_review:
+  enabled: true
+  open_ids:
+  - ou_OPS_1
+  - ou_OPS_2
+weekly_doc:
+  enabled: true
+  folder_token: ""
+  wiki_space_id: ""
+  wiki_parent_node: ""
+  title_fmt: "{year} 第 {week} 周周报"
+reports:
+  risk_alerts: true
+  near_days: 3
+  stale_days: 3
+  manager_schedule: fri14
+  risk_to_ops: true
 intake:
-  # 安全默认：关闭群旁路采集。要开群进展时必须同时 true + 非空 observed_chats，
-  # 且应用已开「读取群全部消息」；不要在未配置目标群时盲开。
-  # 2026-11-03：总开关开，但每个群默认不监听；白名单用户在群里 @机器人「开启监听/关闭监听/监听状态」
-  # 按群开关持久化在 /data/bot.db 的 observe_chats 表。疑似需求只发确认卡，提出人确认才入池。
   observe_groups: true
   all_messages_permission: true
   observed_chats: []
   observe_admins:
-  - ou_REPLACE_ADMIN
+  - ou_ADMIN_OPEN_ID
