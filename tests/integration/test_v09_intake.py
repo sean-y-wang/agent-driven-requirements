@@ -14,6 +14,7 @@ def intake():
     cfg = load_config(CONFIG, env={})
     cfg.first_guide_enabled = False
     cfg.ack_after_seconds = 0
+    cfg.roles[0].confirm_before_write = False  # PRD：明确提需直接入池
     cfg.intake.observe_groups = True
     cfg.intake.all_messages_permission = True
     cfg.intake.observed_chats = ["oc_1"]
@@ -44,16 +45,13 @@ def extract():
     }
 
 
-def test_explicit_requirement_confirms_then_review(intake):
+def test_explicit_requirement_direct_write(intake):
+    """PRD：明确提需（@/私聊）直接入池，不经确认卡。"""
     svc, api, store, llm = intake
     llm.outputs = [classify("record"), extract()]
     msg = make_msg("请提一个需求，支持数据批量导出给分析同事")
     svc.handle(msg)
-    assert not api.records
-    card = api.replies[-1]["card"]
-    assert "待评审" in str(card)
-    action = card["elements"][-1]["actions"][0]["value"]
-    svc.handle_card_action({"operator": {"open_id": msg.sender_open_id}, "action": {"value": action}})
+    assert len(api.records) == 1
     assert api.records[0]["fields"]["状态"] == "待评审"
     assert not api.records[0]["fields"]["复核标记"]
     assert not store.sessions_for(msg.chat_id, msg.sender_open_id)
@@ -110,16 +108,20 @@ def test_report_callback_requires_owner_and_current_revision(intake):
     assert not api.records
 
 
-def test_passive_candidate_does_not_replace_open_requirement(intake):
+def test_passive_candidate_writes_triage_after_explicit_done(intake):
+    """PRD：明确提需已直接入池；旁路疑似需求另写「待分诊」，互不挡。"""
     svc, api, store, llm = intake
     llm.outputs = [classify("record"), extract(), classify("candidate"), extract()]
     msg = make_msg("请提需求，增加批量导出到电子表格功能")
     svc.handle(msg)
-    session = store.sessions_for(msg.chat_id, msg.sender_open_id)[0]
+    assert len(api.records) == 1
+    assert api.records[0]["fields"]["状态"] == "待评审"
+    assert not store.sessions_for(msg.chat_id, msg.sender_open_id)
     api.replies.clear()
     svc.handle(make_msg("如果可以按周批量导出统计结果就方便了", at_bot=False))
-    assert not api.replies
-    assert store.sessions_for(msg.chat_id, msg.sender_open_id)[0].source_message_id == session.source_message_id
+    assert len(api.records) == 2
+    assert api.records[1]["fields"]["状态"] == "待分诊"
+    assert api.records[1]["fields"]["复核标记"] is True
 
 
 def test_missing_group_permission_fails_startup(monkeypatch, tmp_path):
@@ -141,23 +143,24 @@ def test_missing_group_permission_fails_startup(monkeypatch, tmp_path):
         build_service(settings, cfg, None)
 
 
-def test_fresh_group_progress_does_not_edit_pending_confirmation(intake):
+def test_fresh_group_progress_after_direct_intake(intake):
+    """明确提需直接入池后，同群进展静默另写进展表。"""
     svc, api, store, llm = intake
     llm.outputs = [classify("record"), extract(), classify("progress")]
     msg = make_msg("请提一个需求，支持批量下载全部报表")
     svc.handle(msg)
+    assert api.records[0]["table_id"] == "tblREQUIREMENTS"
+    assert not store.sessions_for(msg.chat_id, msg.sender_open_id)
     api.replies.clear()
     svc.handle(make_msg("联调任务目前已经完成，等待验收后上线"))
     assert not api.replies
-    assert api.records[0]["table_id"] == "tblPROGRESS"
-    assert store.sessions_for(msg.chat_id, msg.sender_open_id)[0].source_message_id == msg.message_id
+    assert any(r["table_id"] == "tblPROGRESS" for r in api.records)
 
 
-def test_private_requirement_retains_source_after_card_confirmation(intake):
+def test_private_requirement_direct_write_keeps_source_agent(intake):
     svc, api, _, llm = intake
     llm.outputs = [classify("record"), extract()]
     msg = make_msg("请提需求，增加报表的批量导出能力", chat_type="p2p", at_bot=False)
     svc.handle(msg)
-    action = api.replies[-1]["card"]["elements"][-1]["actions"][0]["value"]
-    svc.handle_card_action({"operator": {"open_id": msg.sender_open_id}, "action": {"value": action}})
+    assert len(api.records) == 1
     assert api.records[0]["fields"]["来源智能体"] == "其他"

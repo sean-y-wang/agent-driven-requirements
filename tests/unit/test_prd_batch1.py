@@ -60,6 +60,9 @@ def env():
     cfg.first_guide_enabled = False
     cfg.ack_after_seconds = 0
     cfg.react_on_mention = False
+    cfg.roles[0].confirm_before_write = False
+    cfg.overdue_notify.dry_run = True  # 单测先走 dry_run，再显式打开实发
+    cfg.ops_review.enabled = False  # 避免入池副作用打扰断言
     api = TableAPI()
     api.cards_ok = True
     store = Store()
@@ -97,19 +100,16 @@ def test_first_request_asks_dept_then_reuses(env):
     svc.handle(_p2p("帮我提个需求：支持数据批量导出给分析同事用"))
     assert "第一次提需" in api.replies[-1]["text"]
     assert not _req_rows(api, cfg)
-    svc.handle(_p2p("4"))
-    assert "输入法" in json.dumps(api.replies[-1]["card"], ensure_ascii=False)
-    _confirm(svc, api, "ou_req")
+    svc.handle(_p2p("4"))  # 答部门后 PRD 直接入池，无确认卡
     row = _req_rows(api, cfg)[0]["fields"]
     assert row["提出部门"] == ["输入法"]
     member = api.tables[cfg.tables.members.table_id][0]["fields"]
     assert member["成员"] == [{"id": "ou_req"}] and member["提出部门"] == "输入法" and member["角色"] == "需求方"
-    # second request: no question, dept reused
+    # second request: no question, dept reused, direct write
     llm.outputs = [_intent(), _extract("[冒烟] 第二条需求，导出支持筛选")]
     n = len(api.replies)
     svc.handle(_p2p("再提一个：导出要支持按日期筛选"))
     assert all("第一次提需" not in (r.get("text") or "") for r in api.replies[n:])
-    _confirm(svc, api, "ou_req")
     assert _req_rows(api, cfg)[1]["fields"]["提出部门"] == ["输入法"]
 
 
@@ -118,7 +118,6 @@ def test_dept_skip_is_remembered(env):
     llm.outputs = [_intent(), _extract()]
     svc.handle(_p2p("帮我提个需求：支持数据批量导出给分析同事用", sender="ou_s"))
     svc.handle(_p2p("跳过", sender="ou_s"))
-    _confirm(svc, api, "ou_s")
     assert "提出部门" not in _req_rows(api, cfg)[0]["fields"]
     assert store.get_member_dept("ou_s") == []
 
@@ -131,15 +130,16 @@ def test_parse_dept(env):
 
 
 def test_attachment_transferred(env):
+    """无确认卡时：先提需进入问部门，会话未关时可收附件，答部门后一并写入。"""
     svc, api, store, llm, cfg = env
-    store.set_member_dept("ou_a", ["研究院"])
     llm.outputs = [_intent(), _extract()]
     svc.handle(_p2p("帮我提个需求：支持数据批量导出给分析同事用", sender="ou_a"))
+    assert "第一次提需" in api.replies[-1]["text"]
     img = IncomingMessage(event_id="ev_img", message_id="om_img", chat_id="oc_p2p_ou_a", chat_type="p2p",
                           sender_open_id="ou_a", message_type="image", content=json.dumps({"image_key": "img_k1"}))
     svc.handle(img)
     assert "已收到附件" in api.replies[-1]["text"]
-    _confirm(svc, api, "ou_a")
+    svc.handle(_p2p("5", sender="ou_a"))  # 研究院
     assert _req_rows(api, cfg)[0]["fields"]["附件"] == [{"file_token": "tok_1"}]
     assert api.uploads == [("img_k1.bin", "bitable_image")]
 
