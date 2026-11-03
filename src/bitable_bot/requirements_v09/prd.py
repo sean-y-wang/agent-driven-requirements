@@ -250,6 +250,7 @@ class TaskDesk:
         self.spec = tables.tasks
         self.tz = tz
         self.base_url = base_url
+        self.last_change: tuple[dict, str, str] | None = None
 
     def statuses(self) -> list[str]:
         st = next((f for f in self.spec.fields if f.key == "status"), None)
@@ -285,6 +286,7 @@ class TaskDesk:
         return "\n".join(lines)
 
     def set_status(self, open_id: str, target: str, status: str) -> str:
+        self.last_change = None
         if status not in self.statuses():
             return f"没有「{status}」这个状态。可选：{'/'.join(self.statuses())}"
         rows = self.mine(open_id)
@@ -305,6 +307,7 @@ class TaskDesk:
             return f"「{cell_text(r['fields'].get(c['title']))}」本来就是 {status}。"
         self.api.update_record(self.spec.app_token, self.spec.table_id, r["record_id"], {c["status"]: status})
         log.info("task.status_set", record_id=r["record_id"], old=old, new=status)
+        self.last_change = (r, old, status)
         return f"✅ 已把「{cell_text(r['fields'].get(c['title']))}」从 {old} 改为 {status}。"
 
 

@@ -34,6 +34,22 @@ from .requirements_v09.prd import (
     parse_task_command,
     transfer_attachments,
 )
+from .requirements_v09.prd2 import (
+    OPS_OPS,
+    apply_plan,
+    brief_text,
+    can_view_brief,
+    create_task_for_requirement,
+    detect_assignee,
+    dossier,
+    log_status_change,
+    ops_review_card,
+    parse_assign_command,
+    parse_schedule_command,
+    plan_delay,
+    plan_insert,
+    plan_text,
+)
 from .requirements_v09.writer import MultiTableWriter
 from .router import IncomingMessage, Kind, bot_mentioned, clean_text, extract_text, help_text, route
 from .session import Session, Store
@@ -139,6 +155,7 @@ class BotService:
         # PRD batch 1: 成员配置 / 我的任务 (only with 0.9 tables)
         self.members = MemberDirectory(api, cfg.tables, store, clock=clock) if cfg.tables else None
         self.tasks = TaskDesk(api, cfg.tables, cfg.timezone, getattr(writer, "base_url", "")) if cfg.tables else None
+        self._plans: dict[str, Any] = {}  # open_id -> pending SchedulePlan (中插/顺延 待确认)
 
     def _spec_by_type(self, role: Role | None, *, key: str | None = None, ftype: str | None = None):
         for f in (role.fields if role else []):
@@ -230,6 +247,15 @@ class BotService:
             tcmd = parse_task_command(text, self.tasks.statuses())
             if tcmd is not None:
                 self._task_command(msg, tcmd)
+                return
+            today = datetime.fromtimestamp(self.clock(), ZoneInfo(self.cfg.timezone)).date()
+            scmd = parse_schedule_command(text, today)
+            if scmd is not None:
+                self._schedule_command(msg, scmd)
+                return
+            acmd = parse_assign_command(text)
+            if acmd is not None and self.cfg.ops_review.enabled:
+                self._assign_command(msg, acmd, people)
                 return
         # Fresh @ / p2p (not a thread follow-up): optional 「收到」reaction
         if addressed and thread_s is None and self.cfg.react_on_mention:
@@ -826,6 +852,15 @@ class BotService:
             dept = self.members.dept_of(s.user_id)
         if dept_spec is not None and dept:
             ext_fields["dept"] = dept
+        if self.cfg.tables and self._spec_by_type(role, key="assignee") is not None and not ext_fields.get("assignee"):
+            picked = detect_assignee(raw_text, all_people, exclude=(self.bot_open_id or "", s.user_id))
+            if picked:
+                ext_fields["assignee"] = [{"id": o} for o in picked]
+                log.info("assignee.detected", n=len(picked))
+            elif self.members is not None and not (candidate or passive):
+                ops = self._ops_ids()
+                if ops:  # PRD：没指定就填产品运营
+                    ext_fields["assignee"] = [{"id": ops[0]}]
         result = validate(role.fields, ext_fields, ctx)
         if passive and not s.raw_fields.get("__confirmed__") and not s.raw_fields.get("__preview__"):
             if not result.complete:
@@ -986,6 +1021,8 @@ class BotService:
             return
         self.store.delete_session(s)
         self.store.audit(**audit, fields=values, record_id=wr.record_id, result="duplicate" if wr.duplicated else "ok")
+        if self.cfg.tables and not wr.duplicated:
+            self._after_intake(role, s, values, wr, reply_to)
         card = success_card(role, values, people, ctx.tz, wr.url, duplicated=wr.duplicated)
         # Card-action confirm path: return receipt via callback (toast+card) instead of a
         # second reply_card, so we ACK within Feishu/xfchat's ~3s window (else client
@@ -1052,6 +1089,29 @@ class BotService:
         if role is None or spec is None:
             self.store.delete_session(s)
             return
+        rid = s.raw_fields.get("__fill_record__")
+        if rid:  # 群里被动收录后补问部门：直接回填那条记录
+            if is_cancel(text) or is_skip(text):
+                dept = []
+            else:
+                dept = parse_dept(text, spec) or []
+                if not dept:
+                    self._reply(msg.message_id, "没认出部门，请回复序号（如「2」）或部门名；不想填回「跳过」。", thread=True)
+                    return
+            self.store.delete_session(s)
+            if self.members is not None:
+                self.members.remember_dept(s.user_id, (s.raw_fields.get("__ctx__") or {}).get("sender_name") or "", dept)
+            if dept:
+                try:
+                    t = self.cfg.tables.requirements
+                    self.api.update_record(t.app_token, t.table_id, rid, {spec.field: dept})
+                    self._reply(msg.message_id, f"✅ 已补上{spec.field}：{'、'.join(dept)}，以后自动沿用。", thread=True)
+                except Exception as e:
+                    log.info("dept.fill_failed", error=str(e)[:200])
+                    self._reply(msg.message_id, "部门记下了，但回填表格失败，请在表里手动补一下。", thread=True)
+            else:
+                self._reply(msg.message_id, "好的，不填部门，以后也不再问。", thread=True)
+            return
         if is_cancel(text):
             self.store.delete_session(s)
             self._reply(s.source_message_id, "已取消，没有收录。", thread=True)
@@ -1071,6 +1131,159 @@ class BotService:
             name = (s.raw_fields.get("__ctx__") or {}).get("sender_name") or ""
             self.members.remember_dept(s.user_id, name, dept)
         self._process(msg, role, s, people, skip_extract=True, force_preview=True)
+
+    # ------------------------------------------------------------------ PRD batch 2
+    def _ops_ids(self) -> list[str]:
+        if self.cfg.ops_review.open_ids:
+            return list(self.cfg.ops_review.open_ids)
+        try:
+            return self.members.by_role("产品运营") if self.members is not None else []
+        except Exception:
+            return []
+
+    def _after_intake(self, role: Role, s: Session, values: dict, wr, reply_to: str) -> None:
+        """入池后：群被动收录补问部门；产品运营评估卡（默认关闭）。都不影响入池结果。"""
+        try:
+            spec = self._spec_by_type(role, key="dept")
+            if (s.raw_fields.get("__intake__") == "passive" and spec is not None and not values.get("dept")
+                    and self.members is not None and self.members.dept_of(s.user_id) is None):
+                ns = Session(chat_id=s.chat_id, user_id=s.user_id, role=s.role, source_message_id=s.source_message_id,
+                             text="", raw_fields={"__phase__": PHASE_DEPT, "__fill_record__": wr.record_id,
+                                                  "__ctx__": s.raw_fields.get("__ctx__")},
+                             expires_at=self.clock() + self.cfg.session.timeout_minutes * 60)
+                ask_id = self._reply(reply_to, f"<at user_id=\"{s.user_id}\"></at> 已收录。补一下你的部门吧（在本话题回复）：\n"
+                                     + dept_question(spec), thread=True)
+                if ask_id:
+                    ns.ask_message_ids.append(ask_id)
+                self.store.save_session(ns)
+        except Exception:
+            log.exception("intake.passive_dept_failed")
+        if self.cfg.ops_review.enabled:
+            try:
+                ops = self._ops_ids()
+                to = list(dict.fromkeys(ops + [p.get("id") for p in (values.get("assignee") or []) if isinstance(p, dict)]))
+                name = (s.raw_fields.get("__ctx__") or {}).get("sender_name") or ""
+                card = ops_review_card(str(values.get("title") or ""), str(values.get("desc") or ""), name,
+                                       "、".join(values.get("dept") or []), wr.record_id, wr.url or "")
+                for oid in to:
+                    if oid:
+                        self.api.send_card(oid, card, receive_id_type="open_id")
+                log.info("ops_review.sent", n=len(to), record_id=wr.record_id)
+            except Exception:
+                log.exception("ops_review.failed")
+
+    def _after_report_confirm(self, report_id: str) -> None:
+        """日报确认 → 风险同步产品运营（reports.risk_to_ops）；周报确认 → 写当周云文档（weekly_doc.enabled）。"""
+        try:
+            d = self.report_store.get(report_id) if self.report_store is not None else None
+            if not d or d.get("status") != "confirmed":
+                return
+            body = d.get("body") or ""
+            if d["kind"] == "daily" and self.cfg.reports.risk_to_ops and "风险预警" in body:
+                name = self.api.get_user_name(d["owner"]) if hasattr(self.api, "get_user_name") else d["owner"]
+                risk = body[body.index("风险预警"):]
+                for oid in self._ops_ids():
+                    if oid != d["owner"]:
+                        self.api.send_text(oid, f"{name} 的日报风险：\n{risk}", receive_id_type="open_id")
+            if d["kind"] == "weekly" and self.cfg.weekly_doc.enabled and getattr(self, "doc_http", None) is not None:
+                from datetime import date as _date
+
+                from .requirements_v09.prd2 import WeeklyDoc
+
+                w = self.cfg.weekly_doc
+                doc = WeeklyDoc(self.doc_http, folder_token=w.folder_token, wiki_space_id=w.wiki_space_id,
+                                wiki_parent_node=w.wiki_parent_node, title_fmt=w.title_fmt,
+                                base_url=getattr(self.writer, "base_url", ""))
+                name = self.api.get_user_name(d["owner"]) if hasattr(self.api, "get_user_name") else d["owner"]
+                url = doc.append_section(_date.fromisoformat(d["day"]), name or d["owner"], body)
+                log.info("weekly_doc.appended", owner=d["owner"], url=url)
+        except Exception:
+            log.exception("report.after_confirm_failed")
+
+    def _schedule_command(self, msg: IncomingMessage, cmd) -> None:
+        uid = msg.sender_open_id
+        tables = self.cfg.tables
+        try:
+            if cmd.kind == "brief":
+                rows = self.api.list_all_records(tables.tasks.app_token, tables.tasks.table_id)
+                mine = self.tasks.mine(uid)
+                title = {f.key: f.field for f in tables.tasks.fields}["title"]
+                if cmd.target.isdigit() and 1 <= int(cmd.target) <= len(mine):
+                    hits = [mine[int(cmd.target) - 1]]
+                else:
+                    hits = [r for r in rows if cmd.target in str((r.get("fields") or {}).get(title) or "")]
+                if len(hits) != 1:
+                    text = "没唯一匹配到任务，换个更完整的任务名，或先发「我的任务」看序号。" if not hits else \
+                        "匹配到多个任务，请写全名：" + "；".join(str(r["fields"].get(title)) for r in hits[:5])
+                else:
+                    d = dossier(self.api, tables, hits[0]["record_id"], self.cfg.timezone, tasks=rows,
+                                base_url=getattr(self.writer, "base_url", ""))
+                    priv = set(self._ops_ids()) | set(self.members.by_role("管理者") if self.members else [])
+                    text = brief_text(d) if can_view_brief(d, uid, priv) else "这个任务的简报只回给参与人、需求提出人和产品运营。"
+            elif cmd.kind == "confirm":
+                plan = self._plans.pop(uid, None)
+                if plan is None or self.clock() - plan.created > 600:
+                    text = "没有待确认的排期变更（或已超过 10 分钟），请重新发「中插 …」或「顺延 …」。"
+                else:
+                    text = apply_plan(self, plan, uid)
+            else:
+                mine = self.tasks.mine(uid)
+                if cmd.kind == "insert":
+                    from datetime import date as _date
+                    plan, err = plan_insert(mine, tables, cmd.target, _date.fromisoformat(cmd.date), cmd.days, self.cfg.timezone)
+                else:
+                    plan, err = plan_delay(mine, tables, cmd.target, cmd.days, self.cfg.timezone)
+                if plan is None:
+                    text = err
+                else:
+                    plan.owner, plan.created = uid, self.clock()
+                    self._plans[uid] = plan
+                    text = plan_text(plan)
+            result = f"schedule:{cmd.kind}"
+        except Exception as e:
+            log.exception("schedule.command_failed")
+            text, result = f"操作失败，请稍后再试（{str(e)[:80]}）。", f"schedule:{cmd.kind}:error"
+        self.store.audit(chat_id=msg.chat_id, sender=uid, command="schedule", result=result,
+                         fields={"target": cmd.target, "date": cmd.date, "days": cmd.days})
+        self._reply(msg.message_id, text)
+
+    def _assign_command(self, msg: IncomingMessage, cmd, people: dict[str, str]) -> None:
+        rid, who = cmd
+        if msg.sender_open_id not in self._ops_ids():
+            self._reply(msg.message_id, "只有产品运营可以分配执行人。")
+            return
+        oid = people.get(who.lstrip("@")) if people else None
+        if not oid and people and len(people) == 1:
+            oid = next(iter(people.values()))
+        if not oid and who.startswith("ou_"):
+            oid = who
+        if not oid:
+            self._reply(msg.message_id, "请 @ 要分配的人，例如「分配 recXXX 给 @张三」。")
+            return
+        try:
+            tid = create_task_for_requirement(self.api, self.writer, self.cfg.tables, rid, oid)
+            d = dossier(self.api, self.cfg.tables, tid, self.cfg.timezone, base_url=getattr(self.writer, "base_url", ""))
+            if not self.cfg.schedule_notify.dry_run:
+                self.api.send_text(oid, "你被分配了一个任务 👇\n" + brief_text(d), receive_id_type="open_id")
+            self._reply(msg.message_id, f"✅ 已建研发任务并分配；{'已' if not self.cfg.schedule_notify.dry_run else '（试运行）未'}给执行人发简报。")
+        except Exception as e:
+            log.exception("assign.failed")
+            self._reply(msg.message_id, f"分配失败：{str(e)[:80]}")
+
+    def handle_ops_action(self, payload: dict[str, Any]) -> dict[str, Any]:
+        value = ((payload.get("action") or {}).get("value") or {})
+        operator = (payload.get("operator") or {}).get("open_id") or ""
+        if operator not in self._ops_ids():
+            return {"toast": {"type": "error", "content": "只有产品运营可以评估"}}
+        op = OPS_OPS.get(value.get("op") or "")
+        rid = value.get("record_id") or ""
+        if not op or not rid.startswith("rec"):
+            return {}
+        rc = {f.key: f.field for f in self.cfg.tables.requirements.fields}
+        fields = {rc[k]: v for k, v in op.items() if k in rc}
+        t = self.cfg.tables.requirements
+        threading.Thread(target=lambda: self.api.update_record(t.app_token, t.table_id, rid, fields), daemon=True).start()
+        return {"toast": {"type": "success", "content": f"已改为 {op.get('status')}"}}
 
     def _attach_to_session(self, msg: IncomingMessage, s: Session | None) -> None:
         items = extract_attachments(msg.message_type, msg.content, msg.message_id)
@@ -1092,6 +1305,11 @@ class BotService:
                 text = self.tasks.list_text(msg.sender_open_id)
             else:
                 text = self.tasks.set_status(msg.sender_open_id, cmd.target, cmd.status)
+                if self.tasks.last_change is not None:
+                    row, old, new = self.tasks.last_change
+                    if log_status_change(self.writer, self.cfg.tables, row, old, new, msg.sender_open_id,
+                                         self.cfg.timezone, datetime.fromtimestamp(self.clock(), ZoneInfo(self.cfg.timezone))):
+                        text += "\n已在进展日志记一笔。"
             result = f"task:{cmd.kind}"
         except Exception as e:
             log.exception("task.command_failed")
@@ -1168,10 +1386,16 @@ class BotService:
         if isinstance(value, dict) and value.get("kind") == "report_confirm":
             from .personal_agent.cards import handle_report_action
 
-            return handle_report_action(
+            out = handle_report_action(
                 self.report_store, payload,
                 datetime.fromtimestamp(self.clock(), ZoneInfo(self.cfg.timezone)).date(),
             )
+            if out and (value.get("action") or "confirm") == "confirm" and self.cfg.tables is not None:
+                threading.Thread(target=self._after_report_confirm, args=(str(value.get("report_id") or ""),),
+                                 daemon=True).start()
+            return out
+        if isinstance(value, dict) and value.get("kind") == "ops_review" and self.cfg.tables is not None:
+            return self.handle_ops_action(payload)
         if not isinstance(value, dict) or value.get("kind") != "confirm":
             return {}  # hide unknown card noise
         op = value.get("action")

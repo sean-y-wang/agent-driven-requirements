@@ -175,11 +175,20 @@ def main() -> int:
         .build()
     )
     service = build_service(settings, cfg, lark_client)
+    if cfg.tables and cfg.weekly_doc.enabled:
+        from .requirements_v09.prd2 import tenant_http
+
+        service.doc_http = tenant_http(settings.app_id, settings.app_secret, settings.open_domain)
     threading.Thread(target=_sweeper, args=(service,), daemon=True, name="sweeper").start()
     if cfg.tables and cfg.overdue_notify.enabled:
         from .requirements_v09.prd import overdue_loop
 
         threading.Thread(target=overdue_loop, args=(service,), daemon=True, name="overdue").start()
+    if cfg.tables:
+        from .requirements_v09.prd2 import maintenance_loop
+
+        threading.Thread(target=maintenance_loop, args=(service, cfg.schedule_notify.maintenance_interval),
+                         daemon=True, name="prd-maintenance").start()
     start_dashboard(settings, service, dict(os.environ))
     log.info(
         "bot.starting",
