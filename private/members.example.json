@@ -1,4 +1,12 @@
 [
-  {"open_id": "ou_REPLACE_MEMBER_1", "name": "示例成员"},
-  {"open_id": "ou_REPLACE_MEMBER_2", "name": "示例成员2"}
+  {
+    "open_id": "ou_REPLACE_MEMBER_1",
+    "name": "示例成员",
+    "email": "member1@example.com"
+  },
+  {
+    "open_id": "ou_REPLACE_MEMBER_2",
+    "name": "示例成员2",
+    "email": "member2@example.com"
+  }
 ]

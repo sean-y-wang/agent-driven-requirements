@@ -15,3 +15,9 @@ config/roles.yaml
 
 .env.bak*
 .env.*.bak*
+
+# host-specific (real xfchat IDs / host network overlay)
+config/roles.requirements.xfchat.yaml
+docker-compose.override.yml
+*.token
+oauth/

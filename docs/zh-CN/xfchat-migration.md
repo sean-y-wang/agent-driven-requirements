@@ -18,3 +18,7 @@
 
 ## 推送
 主动推送不做 email→open_id 查询：收件人有 open_id 用 open_id，否则 chat_id，否则直接 `receive_id_type=email`。
+
+## 群进展旁路
+
+现网保持 `intake.observe_groups: false`。只有在目标群已写入 `observed_chats`、且应用已开通读取群全部消息权限后，再显式打开；未配置目标群时不要盲开。
